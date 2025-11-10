@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ thống Định vị Kho</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Hệ thống Định vị Kho (Indoor Positioning System)</h1>
+    </header>
+
+    <main>
+        <div class="controls">
+            <h2>Bảng điều khiển</h2>
+            <p>Tải lên bản đồ kho của bạn (dưới dạng ảnh .png hoặc .jpg).</p>
+            <input type="file" id="mapUploader" accept="image/*">
+            
+            <p id="instructions">
+                Nhấn "Bắt đầu Thêm Anchor" để vào chế độ đặt vị trí bằng cách click chuột.
+            </p>
+            <button id="resetButton">Đặt lại Anchors</button>
+            <button id="toggleAddAnchorModeButton">Sửa Vị trí Anchor</button>
+            <button id="toggleAddBayModeButton">Thêm/Sửa Ô Kho</button>
+            
+            <div id="anchorInfo">
+                <h3 id="anchorStatus">Vị trí Anchor (pixel):</h3>
+            </div>
+        </div>
+
+        <div class="map-container">
+            <canvas id="warehouseCanvas"></canvas>
+            <div id="loadingText">Vui lòng tải lên bản đồ kho...</div>
+        </div>
+    </main>
+
+    <div id="bayContextMenu">
+        <div class="context-menu-header">
+            Chi Tiết Ô Kho (ID: <span id="bayIdTitle"></span>)
+        </div>
+        <div class="context-menu-content">
+            
+            <div class="tier-row">
+                <label for="bayTier1Code">Tầng 1:</label>
+                <input type="text" class="editable" id="bayTier1Code" placeholder="Mã hàng...">
+                <input type="checkbox" class="editable" id="bayTier1Occupied">
+                <label class="editable" for="bayTier1Occupied">Đã chiếm</label>
+                <span class="readonly" id="bayTier1_ro_code"></span>
+                <span class="readonly" id="bayTier1_ro_status"></span>
+            </div>
+            
+            <div class="tier-row">
+                <label for="bayTier2Code">Tầng 2:</label>
+                <input type="text" class="editable" id="bayTier2Code" placeholder="Mã hàng...">
+                <input type="checkbox" class="editable" id="bayTier2Occupied">
+                <label class="editable" for="bayTier2Occupied">Đã chiếm</label>
+                <span class="readonly" id="bayTier2_ro_code"></span>
+                <span class="readonly" id="bayTier2_ro_status"></span>
+            </div>
+            
+            <div class="tier-row">
+                <label for="bayTier3Code">Tầng 3:</label>
+                <input type="text" class="editable" id="bayTier3Code" placeholder="Mã hàng...">
+                <input type="checkbox" class="editable" id="bayTier3Occupied">
+                <label class="editable" for="bayTier3Occupied">Đã chiếm</label>
+                <span class="readonly" id="bayTier3_ro_code"></span>
+                <span class="readonly" id="bayTier3_ro_status"></span>
+            </div>
+            
+        </div>
+        <div class="context-menu-footer">
+            <button id="deleteBayButton" class="btn-danger editable">Xóa Ô Này</button> 
+            <button id="saveBayDataButton" class="editable">Lưu</button>
+            <button id="cancelBayDataButton" class="editable">Hủy</button>
+            <button id="closeBayDataButton" class="readonly">Đóng</button>
+        </div>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="client.js"></script>
+</body>
+</html>

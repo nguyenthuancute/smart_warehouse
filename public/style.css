@@ -1,0 +1,262 @@
+/* Thiết lập cơ bản */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #f4f7f6;
+    color: #333;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden; 
+}
+header {
+    background-color: #005a9c;
+    color: white;
+    padding: 1rem 2rem;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+main {
+    display: flex;
+    flex-grow: 1;
+    padding: 1.5rem;
+    gap: 1.5rem;
+    overflow: hidden;
+    min-height: 0; 
+}
+/* Cột điều khiển (bên trái) */
+.controls {
+    flex: 0 0 300px;
+    background: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    overflow-y: auto; 
+    overflow-x: hidden;
+}
+.controls h2 {
+    margin-top: 0;
+    color: #005a9c;
+    border-bottom: 2px solid #f4f7f6;
+    padding-bottom: 0.5rem;
+}
+.controls p {
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+#instructions {
+    background-color: #e6f7ff;
+    border: 1px solid #b3e0ff;
+    padding: 10px;
+    border-radius: 4px;
+}
+input[type="file"] {
+    width: 100%;
+    margin-bottom: 1rem;
+}
+
+/* Nút Đặt lại */
+button#resetButton {
+    background-color: #d9534f;
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    width: 100%;
+    transition: background-color 0.2s;
+    margin-top: 0.5rem;
+    display: none; 
+}
+button#resetButton:hover {
+    background-color: #c9302c;
+}
+button#resetButton.visible {
+     display: block; 
+}
+
+/* Nút chế độ thêm anchor */
+#toggleAddAnchorModeButton {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    width: 100%;
+    transition: background-color 0.2s;
+    margin-top: 0.5rem;
+}
+#toggleAddAnchorModeButton:hover {
+    background-color: #0056b3;
+}
+#toggleAddAnchorModeButton.adding {
+     background-color: #28a745; 
+}
+#toggleAddAnchorModeButton.adding:hover {
+     background-color: #218838;
+}
+
+/* CSS NÚT THÊM Ô KHO */
+#toggleAddBayModeButton {
+    background-color: #6f42c1; /* Màu tím */
+    color: white;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    width: 100%;
+    transition: background-color 0.2s;
+    margin-top: 0.5rem;
+}
+#toggleAddBayModeButton:hover {
+    background-color: #5a2d9c;
+}
+#toggleAddBayModeButton.adding {
+     background-color: #ffc107; /* Màu vàng khi thêm */
+     color: #212529;
+}
+#toggleAddBayModeButton.adding:hover {
+     background-color: #e0a800;
+}
+
+/* Chữ hiển thị tọa độ */
+#anchorStatus {
+    margin-top: 1.5rem;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    background: #eee;
+    padding: 10px;
+    border-radius: 4px;
+    font-family: "Courier New", Courier, monospace;
+    font-weight: normal;
+}
+
+/* Khu vực bản đồ (bên phải) */
+.map-container {
+    flex-grow: 1; 
+    position: relative;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+    overflow: hidden; 
+}
+#warehouseCanvas {
+    width: 100%;
+    height: 100%;
+    cursor: grab;
+}
+#loadingText {
+    position: absolute;
+    font-size: 1.2rem;
+    color: #999;
+}
+
+/* CSS MENU CHUỘT PHẢI (Sửa lỗi 1) */
+#bayContextMenu {
+    display: none; /* Mặc định ẩn */
+    position: absolute; /* Nổi lên trên */
+    z-index: 1000;
+    width: 280px;
+    background: white;
+    border: 1px solid #ccc;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    border-radius: 8px;
+    font-size: 0.9rem;
+}
+.context-menu-header {
+    background: #eee;
+    padding: 8px 12px;
+    font-weight: bold;
+    border-bottom: 1px solid #ccc;
+}
+.context-menu-content {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.tier-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.tier-row label {
+    width: 50px; /* "Tầng 1:" */
+}
+.tier-row input[type="text"] {
+    flex-grow: 1;
+    padding: 4px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+}
+.tier-row input[type="checkbox"] {
+    margin-left: 5px;
+}
+.context-menu-footer {
+    padding: 8px 12px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    border-top: 1px solid #eee;
+}
+/* Nút Xóa */
+.context-menu-footer .btn-danger {
+    background: #d9534f;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    margin-right: auto; 
+}
+.context-menu-footer .btn-danger:hover {
+    background: #c9302c;
+}
+/* Nút Lưu / Hủy / Đóng */
+#saveBayDataButton, #cancelBayDataButton, #closeBayDataButton {
+    background: #6c757d;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+}
+#saveBayDataButton {
+    background: #28a745;
+}
+
+/* CSS CHO CHẾ ĐỘ XEM/SỬA */
+#bayContextMenu .editable,
+#bayContextMenu .readonly {
+    display: none;
+}
+#bayContextMenu.edit-mode .editable {
+    display: inline-block;
+}
+#bayContextMenu.edit-mode label.editable {
+    display: inline-block;
+}
+#bayContextMenu.view-mode .readonly {
+    display: inline-block;
+}
+.tier-row span.readonly {
+    margin-left: 5px;
+    font-size: 0.9rem;
+}
+span.readonly[id$="_ro_code"] {
+    font-weight: bold;
+    color: #005a9c;
+    min-width: 80px;
+}
+span.readonly[id$="_ro_status"] {
+    font-style: italic;
+    color: #555;
+}
