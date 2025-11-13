@@ -260,3 +260,21 @@ span.readonly[id$="_ro_status"] {
     font-style: italic;
     color: #555;
 }
+/* --- THÊM VÀO CUỐI FILE --- */
+
+/* CSS cho nút Đăng xuất */
+#logoutButton {
+    position: absolute;
+    top: 1.25rem;
+    right: 2rem;
+    background: #d9534f;
+    color: white;
+    padding: 8px 15px;
+    border-radius: 4px;
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+#logoutButton:hover {
+    background: #c9302c;
+}

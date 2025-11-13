@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đăng ký</title>
+    <link rel="stylesheet" href="auth.css">
+</head>
+<body>
+    <div class="auth-container">
+        <form action="/register" method="POST">
+            <h2>Đăng ký Tài khoản</h2>
+            <div class="input-group">
+                <label for="username">Tên đăng nhập</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            <div class="input-group">
+                <label for="password">Mật khẩu</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            <div class="input-group">
+                <label>Loại tài khoản:</label>
+                <div class="radio-group">
+                    <input type="radio" id="role_employee" name="role" value="employee" checked>
+                    <label for="role_employee">Nhân viên</label>
+                    <input type="radio" id="role_admin" name="role" value="admin">
+                    <label for="role_admin">Admin</label>
+                </div>
+            </div>
+            <button type="submit">Đăng ký</button>
+            <p>Đã có tài khoản? <a href="/login">Đăng nhập</a></p>
+        </form>
+    </div>
+</body>
+</html>
