@@ -51,15 +51,20 @@ const Bay = mongoose.model('Bay', BaySchema);
 const app = express();
 const server = http.createServer(app);
 // --- CẤU HÌNH SESSION (Lưu vào MongoDB thay vì RAM) ---
+// File: server.js
 const sessionMiddleware = session({
     secret: 'secret-key-kho-thong-minh',
     resave: false,
     saveUninitialized: false,
     store: MongoStore.create({
-        mongoUrl: process.env.MONGO_URI, // Dùng chung link kết nối với DB chính
-        ttl: 24 * 60 * 60 // Session tồn tại trong 24 giờ (tính bằng giây)
+        mongoUrl: process.env.MONGO_URI,
+        ttl: 24 * 60 * 60, // 1 ngày
+        
+        // --- THÊM 2 DÒNG NÀY ĐỂ GIẢM LAG ---
+        touchAfter: 24 * 3600, // Chỉ cập nhật session vào DB 1 lần mỗi 24h (trừ khi có thay đổi dữ liệu)
+        autoRemove: 'native' // Để MongoDB tự động xóa session cũ, giảm tải cho Server
     }),
-    cookie: { maxAge: 24 * 60 * 60 * 1000 } // 24 giờ (tính bằng mili-giây)
+    cookie: { maxAge: 24 * 60 * 60 * 1000 }
 });
 
 app.use(sessionMiddleware);
