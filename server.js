@@ -1,4 +1,5 @@
 require('dotenv').config(); // Đọc file .env
+const MongoStore = require('connect-mongo');
 const express = require('express');
 const http = require('http');
 const { Server } = require("socket.io");
@@ -49,11 +50,16 @@ const Bay = mongoose.model('Bay', BaySchema);
 // --- 3. KHỞI TẠO APP ---
 const app = express();
 const server = http.createServer(app);
+// --- CẤU HÌNH SESSION (Lưu vào MongoDB thay vì RAM) ---
 const sessionMiddleware = session({
     secret: 'secret-key-kho-thong-minh',
     resave: false,
     saveUninitialized: false,
-    cookie: { maxAge: 24 * 60 * 60 * 1000 } // 24 giờ
+    store: MongoStore.create({
+        mongoUrl: process.env.MONGO_URI, // Dùng chung link kết nối với DB chính
+        ttl: 24 * 60 * 60 // Session tồn tại trong 24 giờ (tính bằng giây)
+    }),
+    cookie: { maxAge: 24 * 60 * 60 * 1000 } // 24 giờ (tính bằng mili-giây)
 });
 
 app.use(sessionMiddleware);
