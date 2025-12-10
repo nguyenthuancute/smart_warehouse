@@ -2,16 +2,28 @@
 let USER_ROLE = null;
 
 // Kết nối với máy chủ Socket.io
-const socket = io();
+// Ép dùng websocket để phản hồi nhanh hơn
+const socket = io({
+    transports: ['websocket'], 
+    upgrade: false
+});
 
 // --- 1. LẤY CÁC PHẦN TỬ HTML ---
 const mapUploader = document.getElementById('mapUploader');
 const canvas = document.getElementById('warehouseCanvas');
 const ctx = canvas.getContext('2d');
-// ... (lấy tất cả các phần tử như code cũ) ...
+
+// Các nút bấm chính
 const toggleAddAnchorModeButton = document.getElementById('toggleAddAnchorModeButton');
 const toggleAddBayModeButton = document.getElementById('toggleAddBayModeButton');
-// ... (lấy tất cả các phần tử pop-up như code cũ) ...
+const resetButton = document.getElementById('resetButton'); // Nút đỏ
+
+// Các phần tử thông báo
+const loadingText = document.getElementById('loadingText');
+const instructions = document.getElementById('instructions');
+const anchorStatus = document.getElementById('anchorStatus');
+
+// Các phần tử Menu Chuột phải (Pop-up)
 const bayContextMenu = document.getElementById('bayContextMenu');
 const bayIdTitle = document.getElementById('bayIdTitle');
 const bayTier1Code = document.getElementById('bayTier1Code');
@@ -24,16 +36,15 @@ const saveBayDataButton = document.getElementById('saveBayDataButton');
 const cancelBayDataButton = document.getElementById('cancelBayDataButton');
 const deleteBayButton = document.getElementById('deleteBayButton');
 const closeBayDataButton = document.getElementById('closeBayDataButton');
+
+// Các phần tử hiển thị (Read-only) trong Menu
 const bayTier1_ro_code = document.getElementById('bayTier1_ro_code');
 const bayTier1_ro_status = document.getElementById('bayTier1_ro_status');
 const bayTier2_ro_code = document.getElementById('bayTier2_ro_code');
 const bayTier2_ro_status = document.getElementById('bayTier2_ro_status');
 const bayTier3_ro_code = document.getElementById('bayTier3_ro_code');
 const bayTier3_ro_status = document.getElementById('bayTier3_ro_status');
-const loadingText = document.getElementById('loadingText');
-const resetButton = document.getElementById('resetButton');
-const instructions = document.getElementById('instructions');
-const anchorStatus = document.getElementById('anchorStatus');
+
 
 // --- 2. BIẾN TOÀN CỤC ---
 let mapImage = new Image();
@@ -41,6 +52,8 @@ let mapLoaded = false;
 let anchors = []; 
 let allTagPositions = {}; 
 let warehouseBays = []; 
+
+// Biến Zoom / Pan
 let zoom = 1;       
 let originX = 0;    
 let originY = 0;    
@@ -49,6 +62,8 @@ let lastPanX = 0;
 let lastPanY = 0;
 let hasRotated = false; 
 let hasPanned = false; 
+
+// Biến Trạng thái
 let isAddingAnchors = false; 
 let isAddingBays = false; 
 let currentEditingBayId = null; 
@@ -78,11 +93,10 @@ window.onload = async () => {
     }
 };
 
-// --- 4. TẢI VÀ XỬ LÝ BẢN ĐỒ (Giữ nguyên) ---
+// --- 4. TẢI VÀ XỬ LÝ BẢN ĐỒ ---
 mapUploader.addEventListener('change', (event) => {
     const file = event.target.files[0];
     if (file) {
-        // ... (Toàn bộ logic xoay ảnh giữ nguyên) ...
         hasRotated = false; 
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -103,6 +117,7 @@ mapUploader.addEventListener('change', (event) => {
                 loadingText.style.display = 'none';
                 setTimeout(() => {
                     fitImageToCanvas();
+                    // Reset trạng thái
                     if (isAddingAnchors) exitAddAnchorMode(false); 
                     if (isAddingBays) exitAddBayMode();
                 }, 100); 
@@ -114,9 +129,7 @@ mapUploader.addEventListener('change', (event) => {
     }
 });
 
-// Hàm "Fit" ảnh
 function fitImageToCanvas() {
-    // ... (Giữ nguyên code) ...
     if (!mapLoaded) return;
     const canvasElementWidth = canvas.clientWidth;
     const canvasElementHeight = canvas.clientHeight;
@@ -133,12 +146,15 @@ function fitImageToCanvas() {
     redrawCanvas();
 }
 
-// --- 5. VẼ LẠI MỌI THỨ (Giữ nguyên) ---
+// --- 5. VẼ LẠI MỌI THỨ ---
 function redrawCanvas() {
-    // ... (Toàn bộ logic vẽ giữ nguyên y hệt code cũ) ...
     if (!mapLoaded) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // 1. Vẽ bản đồ nền
     ctx.drawImage(mapImage, originX, originY, mapImage.width * zoom, mapImage.height * zoom);
+
+    // 2. Vẽ Anchor (Chỉ hiện khi đang ở chế độ thêm Anchor)
     if (isAddingAnchors) {
         anchors.forEach((anchor, index) => {
             const scaledX = (anchor.x * zoom) + originX;
@@ -151,21 +167,31 @@ function redrawCanvas() {
             drawText(`A${index + 1}`, scaledX, scaledY - 10, color);
         });
     }
-    if (isAddingBays) {
-        warehouseBays.forEach(bay => {
-            const scaledX = (bay.x * zoom) + originX;
-            const scaledY = (bay.y * zoom) + originY;
-            ctx.strokeStyle = '#6f42c1'; 
-            ctx.lineWidth = 1;
-            ctx.strokeRect(scaledX - 10, scaledY - 10, 20, 20); 
+
+    // 3. Vẽ Ô kho (Chỉ hiện khi đang ở chế độ thêm Ô kho HOẶC luôn hiện nếu muốn)
+    // Ở đây mình để logic: Luôn hiện ô kho, nhưng chỉ hiện ID khi đang sửa
+    warehouseBays.forEach(bay => {
+        const scaledX = (bay.x * zoom) + originX;
+        const scaledY = (bay.y * zoom) + originY;
+        
+        ctx.strokeStyle = '#6f42c1'; 
+        ctx.lineWidth = 1;
+        ctx.strokeRect(scaledX - 10, scaledY - 10, 20, 20); 
+        
+        // Nếu đang ở mode thêm ô, vẽ ID
+        if (isAddingBays) {
             drawText(`Ô ${bay.id}`, scaledX, scaledY + 20, '#6f42c1');
-            const isOccupied = bay.tiers.some(tier => tier.occupied);
-            if (isOccupied) {
-                ctx.fillStyle = 'rgba(255, 0, 0, 0.4)'; 
-                ctx.fillRect(scaledX - 10, scaledY - 10, 20, 20);
-            }
-        });
-    }
+        }
+        
+        // Tô màu đỏ nếu có hàng
+        const isOccupied = bay.tiers.some(tier => tier.occupied);
+        if (isOccupied) {
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.4)'; 
+            ctx.fillRect(scaledX - 10, scaledY - 10, 20, 20);
+        }
+    });
+
+    // 4. Vẽ Tag (Luôn hiện)
     for (const tagId in allTagPositions) {
         const position = allTagPositions[tagId];
         if (position) {
@@ -177,20 +203,21 @@ function redrawCanvas() {
     }
 }
 
-// --- 6. LOGIC TƯƠNG TÁC (CLICK, PAN, ZOOM) ---
+// --- 6. LOGIC TƯƠNG TÁC ---
 
-// A. Đặt Anchor / Ô Kho (Click)
+// A. Click chuột (Thêm Anchor / Ô kho)
 canvas.addEventListener('click', (event) => {
-    // ... (Logic click giữ nguyên) ...
     if (!mapLoaded || hasPanned) { hasPanned = false; return; }
+    
     const rect = canvas.getBoundingClientRect();
     const clickX_on_canvas = event.clientX - rect.left;
     const clickY_on_canvas = event.clientY - rect.top;
     const originalX = (clickX_on_canvas - originX) / zoom;
     const originalY = (clickY_on_canvas - originY) / zoom;
+
     if (originalX < 0 || originalX > mapImage.width || originalY < 0 || originalY > mapImage.height) return; 
 
-    // Logic thêm Anchor (Chỉ admin mới vào được mode này)
+    // Logic thêm Anchor
     if (isAddingAnchors) {
         if (anchors.length >= 12) { alert('Đã đặt đủ 12 anchor.'); return; }
         anchors.push({ x: originalX, y: originalY });
@@ -198,50 +225,37 @@ canvas.addEventListener('click', (event) => {
         redrawCanvas(); 
     }
     
-    // Logic thêm Ô Kho (Chỉ admin mới vào được mode này)
+    // Logic thêm Ô Kho
     if (isAddingBays) {
         const newBay = {
             id: warehouseBays.length + 1, x: originalX, y: originalY,
             tiers: [ { code: '', occupied: false }, { code: '', occupied: false }, { code: '', occupied: false } ]
         };
         warehouseBays.push(newBay);
-        // THAY ĐỔI: Gửi event mới
         socket.emit('set_bays_layout', warehouseBays); 
         redrawCanvas();
     }
 });
 
-// B. Pan (Kéo thả) - (Giữ nguyên)
+// B. Pan/Zoom (Giữ nguyên logic cũ)
 canvas.addEventListener('mousedown', (event) => {
     if (isAddingAnchors || isAddingBays) { isPanning = false; return; }
-    isPanning = true;
-    hasPanned = false; 
-    lastPanX = event.clientX;
-    lastPanY = event.clientY;
+    isPanning = true; hasPanned = false; 
+    lastPanX = event.clientX; lastPanY = event.clientY;
     canvas.style.cursor = 'grabbing';
 });
-canvas.addEventListener('mouseup', () => {
-    isPanning = false;
-    if (!isAddingAnchors && !isAddingBays) canvas.style.cursor = 'grab';
-});
-canvas.addEventListener('mouseleave', () => {
-    isPanning = false;
-    if (!isAddingAnchors && !isAddingBays) canvas.style.cursor = 'grab';
-});
+canvas.addEventListener('mouseup', () => { isPanning = false; if (!isAddingAnchors && !isAddingBays) canvas.style.cursor = 'grab'; });
+canvas.addEventListener('mouseleave', () => { isPanning = false; if (!isAddingAnchors && !isAddingBays) canvas.style.cursor = 'grab'; });
 canvas.addEventListener('mousemove', (event) => {
     if (!isPanning || !mapLoaded) return;
     if (isAddingAnchors || isAddingBays) return; 
     hasPanned = true; 
     const dx = event.clientX - lastPanX;
     const dy = event.clientY - lastPanY;
-    originX += dx;
-    originY += dy;
-    lastPanX = event.clientX;
-    lastPanY = event.clientY;
+    originX += dx; originY += dy;
+    lastPanX = event.clientX; lastPanY = event.clientY;
     redrawCanvas();
 });
-
-// C. Zoom (Cuộn chuột) - (Giữ nguyên)
 canvas.addEventListener('wheel', (event) => {
     if (!mapLoaded) return;
     event.preventDefault(); 
@@ -258,11 +272,9 @@ canvas.addEventListener('wheel', (event) => {
     redrawCanvas();
 });
 
-// D. Mở Menu Chuột Phải (THAY ĐỔI LOGIC)
+// C. Menu Chuột phải (Pop-up)
 canvas.addEventListener('contextmenu', (event) => {
     event.preventDefault(); 
-    
-    // Admin ở mode thêm anchor thì không làm gì
     if (isAddingAnchors) return;
     
     const rect = canvas.getBoundingClientRect();
@@ -276,37 +288,29 @@ canvas.addEventListener('contextmenu', (event) => {
     for (const bay of warehouseBays) {
         const dist = Math.sqrt(Math.pow(bay.x - originalX, 2) + Math.pow(bay.y - originalY, 2));
         if (dist < CLICK_THRESHOLD) {
-            targetBay = bay;
-            break;
+            targetBay = bay; break;
         }
     }
     
     if (targetBay) {
         currentEditingBayId = targetBay.id;
         
-        // PHÂN QUYỀN POP-UP
-        // Admin (ở mode sửa) VÀ Employee (luôn luôn) có thể sửa nội dung
+        // Phân quyền hiển thị
         if (USER_ROLE === 'admin' || USER_ROLE === 'employee') {
+            bayContextMenu.classList.add('edit-mode');
+            bayContextMenu.classList.remove('view-mode');
             
-            // Chỉ Admin mới được XÓA
+            // Nút Xóa chỉ dành cho Admin
             if (USER_ROLE === 'admin' && isAddingBays) {
-                 bayContextMenu.classList.add('edit-mode');
-                 bayContextMenu.classList.remove('view-mode');
-                 deleteBayButton.style.display = 'inline-block'; // Admin có thể xóa
+                 deleteBayButton.style.display = 'inline-block';
             } else {
-                 // Employee chỉ được sửa, không được xóa
-                 bayContextMenu.classList.add('edit-mode');
-                 bayContextMenu.classList.remove('view-mode');
-                 deleteBayButton.style.display = 'none'; // Employee KHÔNG thể xóa
+                 deleteBayButton.style.display = 'none';
             }
 
             bayIdTitle.innerText = targetBay.id;
-            bayTier1Code.value = targetBay.tiers[0].code;
-            bayTier1Occupied.checked = targetBay.tiers[0].occupied;
-            bayTier2Code.value = targetBay.tiers[1].code;
-            bayTier2Occupied.checked = targetBay.tiers[1].occupied;
-            bayTier3Code.value = targetBay.tiers[2].code;
-            bayTier3Occupied.checked = targetBay.tiers[2].occupied;
+            bayTier1Code.value = targetBay.tiers[0].code; bayTier1Occupied.checked = targetBay.tiers[0].occupied;
+            bayTier2Code.value = targetBay.tiers[1].code; bayTier2Occupied.checked = targetBay.tiers[1].occupied;
+            bayTier3Code.value = targetBay.tiers[2].code; bayTier3Occupied.checked = targetBay.tiers[2].occupied;
         } 
         
         bayContextMenu.style.display = 'block';
@@ -315,38 +319,22 @@ canvas.addEventListener('contextmenu', (event) => {
     }
 });
 
-// --- 7. CÁC HÀM TIỆN ÍCH VÀ SOCKET (THAY ĐỔI) ---
+// --- 7. CÁC HÀM TIỆN ÍCH & NÚT BẤM (ĐÃ SỬA LỖI) ---
 
-// Hàm tiện ích (Giữ nguyên)
 function drawCircle(x, y, radius, color, lineWidth) {
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, 2 * Math.PI, false);
-    ctx.lineWidth = lineWidth;
-    ctx.strokeStyle = color;
-    ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, radius, 0, 2 * Math.PI, false);
+    ctx.lineWidth = lineWidth; ctx.strokeStyle = color; ctx.stroke();
 }
 function drawText(text, x, y, color = '#000000') {
-    ctx.font = 'bold 16px Arial';
-    ctx.fillStyle = color;
-    ctx.textAlign = 'center';
-    ctx.fillText(text, x, y);
+    ctx.font = 'bold 16px Arial'; ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.fillText(text, x, y);
 }
 
-// Xử lý Nút Reset Anchor (Giữ nguyên)
-resetButton.addEventListener('click', resetAnchors);
-function resetAnchors() {
-    if (!isAddingAnchors) return; 
-    anchors = []; 
-    updateAnchorStatusDisplay(); 
-    redrawCanvas(); 
-    instructions.innerText = 'Đã xóa. Hãy click để đặt lại (tối thiểu 3).';
-}
+// === CÁC HÀM QUAN TRỌNG CHO ANCHOR ===
 
-// Cập nhật text (Giữ nguyên)
+// Cập nhật dòng chữ hiển thị tọa độ
 function updateAnchorStatusDisplay() {
-    // ... (Giữ nguyên code) ...
     if (!isAddingAnchors) {
-         anchorStatus.innerText = `Vị trí Anchor (pixel): ${anchors.length} điểm đã đặt (ẩn).`;
+         anchorStatus.innerText = `Vị trí Anchor (pixel): ${anchors.length} điểm đã đặt.`;
          anchorStatus.style.background = '#eee'; 
          return;
     }
@@ -364,31 +352,70 @@ function updateAnchorStatusDisplay() {
     anchorStatus.innerText = text;
 }
 
-// Logic cho nút "Thêm Anchor" (THAY ĐỔI event)
+// Nút Reset Anchor (Nút Đỏ)
+resetButton.addEventListener('click', () => {
+    if (!isAddingAnchors) return; 
+    anchors = []; // Xóa hết
+    updateAnchorStatusDisplay(); 
+    redrawCanvas(); 
+    instructions.innerText = 'Đã xóa. Hãy click để đặt lại (tối thiểu 3).';
+});
+
+// Nút Bật/Tắt chế độ sửa Anchor
 toggleAddAnchorModeButton.addEventListener('click', () => {
     if (!mapLoaded) { alert("Vui lòng tải bản đồ trước!"); return; }
+    
+    // Nếu đang ở chế độ sửa kho thì tắt đi
     if (isAddingBays) exitAddBayMode(); 
+    
     isAddingAnchors = !isAddingAnchors; 
-    if (isAddingAnchors) enterAddAnchorMode();
-    else exitAddAnchorMode(true); // Thoát (Xác nhận) và Gửi server
+    
+    if (isAddingAnchors) {
+        enterAddAnchorMode();
+    } else {
+        exitAddAnchorMode(true); // Thoát và Gửi server
+    }
 });
-function enterAddAnchorMode() { /* (Giữ nguyên) */ }
+
+function enterAddAnchorMode() {
+    isAddingAnchors = true;
+    toggleAddAnchorModeButton.innerText = 'Xác nhận Vị trí Anchor';
+    toggleAddAnchorModeButton.classList.add('adding');
+    
+    // HIỆN NÚT ĐỎ RESET
+    resetButton.classList.add('visible'); 
+    resetButton.style.display = 'block'; // Ép hiển thị
+
+    instructions.innerText = 'Click lên bản đồ để đặt anchor (tối thiểu 3). Nhấn nút Đỏ để xóa làm lại.';
+    canvas.style.cursor = 'crosshair'; 
+    
+    updateAnchorStatusDisplay();
+    redrawCanvas();
+}
+
 function exitAddAnchorMode(sendToServer) {
-    // ... (logic cũ)
+    // Kiểm tra nếu chưa đủ 3 điểm thì không cho thoát (nếu định gửi server)
+    if(sendToServer && anchors.length > 0 && anchors.length < 3) {
+        alert("Bạn cần đặt ít nhất 3 anchor!");
+        // Quay lại mode thêm
+        enterAddAnchorMode();
+        return;
+    }
+
     isAddingAnchors = false;
     toggleAddAnchorModeButton.innerText = 'Sửa Vị trí Anchor';
     toggleAddAnchorModeButton.classList.remove('adding');
+    
+    // ẨN NÚT ĐỎ RESET
     resetButton.classList.remove('visible'); 
+    resetButton.style.display = 'none';
+
     instructions.innerText = 'Đã xác nhận. Nhấn "Sửa Vị trí" để thay đổi.';
     canvas.style.cursor = 'grab'; 
     
-    // THAY ĐỔI: Gửi event 'set_anchors' (Admin-only)
-    if(sendToServer && anchors.length >= 3) {
+    // Gửi lên server
+    if(sendToServer) {
          socket.emit('set_anchors', anchors);
-    } else if (sendToServer) {
-        alert("Bạn cần đặt ít nhất 3 anchor!");
-        enterAddAnchorMode(); // Quay lại mode thêm
-        return;
     }
     
     updateAnchorStatusDisplay();
@@ -396,18 +423,34 @@ function exitAddAnchorMode(sendToServer) {
 }
 
 
-// LOGIC NÚT Ô KHO (Giữ nguyên)
+// === CÁC HÀM QUAN TRỌNG CHO Ô KHO ===
+
 toggleAddBayModeButton.addEventListener('click', () => {
     if (!mapLoaded) { alert("Vui lòng tải bản đồ trước!"); return; }
     if (isAddingAnchors) exitAddAnchorMode(false); 
     isAddingBays = !isAddingBays; 
-    if (isAddingBays) enterAddBayMode();
-    else exitAddBayMode();
+    if (isAddingBays) enterAddBayMode(); else exitAddBayMode();
 });
-function enterAddBayMode() { /* (Giữ nguyên) */ }
-function exitAddBayMode() { /* (Giữ nguyên) */ }
 
-// LOGIC MENU CHUỘT PHẢI (THAY ĐỔI event)
+function enterAddBayMode() {
+    isAddingBays = true;
+    toggleAddBayModeButton.innerText = 'Thoát Chế độ Thêm Ô';
+    toggleAddBayModeButton.classList.add('adding');
+    instructions.innerText = 'Click để TẠO ô kho. Nhấp chuột phải để SỬA/XÓA.';
+    canvas.style.cursor = 'cell'; 
+    redrawCanvas(); 
+}
+
+function exitAddBayMode() {
+    isAddingBays = false;
+    toggleAddBayModeButton.innerText = 'Thêm/Sửa Ô Kho';
+    toggleAddBayModeButton.classList.remove('adding');
+    instructions.innerText = 'Nhấp chuột phải vào ô kho để XEM/SỬA thông tin.';
+    canvas.style.cursor = 'grab';
+    redrawCanvas(); 
+}
+
+// === XỬ LÝ MENU POP-UP ===
 function hideContextMenu() {
     bayContextMenu.style.display = 'none';
     currentEditingBayId = null;
@@ -417,15 +460,9 @@ closeBayDataButton.addEventListener('click', hideContextMenu);
 
 deleteBayButton.addEventListener('click', () => {
     if (currentEditingBayId === null) return;
-    if (!confirm(`Bạn có chắc muốn XÓA vĩnh viễn Ô Kho ID: ${currentEditingBayId}?`)) {
-        return; 
-    }
+    if (!confirm(`Bạn có chắc muốn XÓA vĩnh viễn Ô Kho ID: ${currentEditingBayId}?`)) return; 
     warehouseBays = warehouseBays.filter(bay => bay.id !== currentEditingBayId);
-    warehouseBays.forEach((bay, index) => {
-        bay.id = index + 1; // Đánh số lại
-    });
-    
-    // THAY ĐỔI: Gửi event 'set_bays_layout' (Admin-only)
+    warehouseBays.forEach((bay, index) => { bay.id = index + 1; });
     socket.emit('set_bays_layout', warehouseBays); 
     hideContextMenu();
     redrawCanvas(); 
@@ -435,33 +472,25 @@ saveBayDataButton.addEventListener('click', () => {
     if (currentEditingBayId === null) return;
     const bay = warehouseBays.find(b => b.id === currentEditingBayId);
     if (!bay) return;
-    
-    // Cập nhật object 'bay'
-    bay.tiers[0].code = bayTier1Code.value;
-    bay.tiers[0].occupied = bayTier1Occupied.checked;
-    bay.tiers[1].code = bayTier2Code.value;
-    bay.tiers[1].occupied = bayTier2Occupied.checked;
-    bay.tiers[2].code = bayTier3Code.value;
-    bay.tiers[2].occupied = bayTier3Occupied.checked;
-    
-    // THAY ĐỔI: Gửi event 'update_bay_data' (Employee + Admin)
+    bay.tiers[0].code = bayTier1Code.value; bay.tiers[0].occupied = bayTier1Occupied.checked;
+    bay.tiers[1].code = bayTier2Code.value; bay.tiers[1].occupied = bayTier2Occupied.checked;
+    bay.tiers[2].code = bayTier3Code.value; bay.tiers[2].occupied = bayTier3Occupied.checked;
     socket.emit('update_bay_data', bay); 
     hideContextMenu();
     redrawCanvas(); 
 });
-// Đóng menu nếu click ra ngoài (Giữ nguyên)
 document.addEventListener('click', (e) => {
-    if (bayContextMenu.style.display === 'block' && !bayContextMenu.contains(e.target)) {
-        hideContextMenu();
-    }
+    if (bayContextMenu.style.display === 'block' && !bayContextMenu.contains(e.target)) hideContextMenu();
 });
 
-// --- 8. LẮNG NGHE SERVER (Giữ nguyên) ---
+// --- 8. LẮNG NGHE SERVER ---
 socket.on('tags_update', (tagMap) => {
     allTagPositions = tagMap;
     redrawCanvas();
 });
 socket.on('anchors_updated', (serverAnchors) => {
+    // Chỉ cập nhật từ server nếu mình KHÔNG đang sửa.
+    // Nếu đang sửa thì ưu tiên cái mình đang vẽ.
     if (!isAddingAnchors) { 
         anchors = serverAnchors;
         updateAnchorStatusDisplay(); 
