@@ -232,7 +232,7 @@ client.on('message', (topic, message) => {
                 
                 // ⚠️ HÃY CHỈNH SỐ NÀY CHO ĐÚNG VỚI KHO CỦA BẠN
                 // Ví dụ: 1 mét thực tế tương ứng 50 pixel trên bản đồ
-                const SCALE_FACTOR = 50; 
+                const SCALE_FACTOR = 150; 
 
                 // Lấy tọa độ Anchor từ Database/Cache
                 const p1 = anchors[0]; // Anchor 1
