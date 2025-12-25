@@ -208,41 +208,57 @@ client.on('error', (err) => {
 client.on('message', (topic, message) => {
     if (topic.startsWith(MQTT_TOPIC_PREFIX)) {
         try {
-            // Lấy ID tag (vd: tag01)
-            const tagId = topic.split('/').pop();
+            const tagId = topic.split('/').pop(); // Lấy ID tag (vd: tag01)
             const data = JSON.parse(message.toString());
-            const distanceData = data.distances; // { "0": 5.5, "1": 6.2 ... }
-            
-            console.log(`📩 Data từ [${tagId}]:`, JSON.stringify(distanceData));
+            const distanceData = data.distances; 
 
-            // --- THUẬT TOÁN ĐỊNH VỊ ---
-            // Yêu cầu: Phải có ít nhất 3 anchor trong DB và dữ liệu đo được tới 3 trạm đó
-            if (anchors.length >= 3 && distanceData["0"] && distanceData["1"] && distanceData["2"]) {
+            // LOG KIỂM TRA DỮ LIỆU
+            // console.log(`Data nhận được: Base0=${distanceData["0"]}, Base1=${distanceData["1"]}, Base2=${distanceData["2"]}`);
+
+            // --- CẤU HÌNH MAP (MAPPING) ---
+            // Yêu cầu của bạn:
+            // Anchor 1 (trong mảng là index 0) <--> Base 0 (key "0")
+            // Anchor 2 (trong mảng là index 1) <--> Base 1 (key "1")
+            // Anchor 3 (trong mảng là index 2) <--> Base 2 (key "2")
+            
+            // Kiểm tra xem Admin đã đặt đủ 3 Anchor trên web chưa
+            if (anchors.length < 3) {
+                console.log("⚠️ Chưa đặt đủ Anchor trên bản đồ!");
+                return;
+            }
+
+            // Kiểm tra xem có đủ dữ liệu từ 3 Base không
+            if (distanceData["0"] && distanceData["1"] && distanceData["2"]) {
                 
-                // QUAN TRỌNG: Tỷ lệ bản đồ
-                // Giả sử: 1 mét thực tế = 50 pixel trên web (Bạn hãy chỉnh số này cho chuẩn với ảnh kho)
+                // ⚠️ HÃY CHỈNH SỐ NÀY CHO ĐÚNG VỚI KHO CỦA BẠN
+                // Ví dụ: 1 mét thực tế tương ứng 50 pixel trên bản đồ
                 const SCALE_FACTOR = 50; 
 
-                const p1 = anchors[0]; // Tọa độ trên web (pixel)
-                const p2 = anchors[1]; 
-                const p3 = anchors[2]; 
+                // Lấy tọa độ Anchor từ Database/Cache
+                const p1 = anchors[0]; // Anchor 1
+                const p2 = anchors[1]; // Anchor 2
+                const p3 = anchors[2]; // Anchor 3
 
-                // Đổi khoảng cách từ mét -> pixel
-                const r1 = distanceData["0"] * SCALE_FACTOR;
-                const r2 = distanceData["1"] * SCALE_FACTOR;
-                const r3 = distanceData["2"] * SCALE_FACTOR;
+                // Lấy khoảng cách và đổi ra Pixel
+                const r1 = distanceData["0"] * SCALE_FACTOR; // Khoảng cách tới Base 0
+                const r2 = distanceData["1"] * SCALE_FACTOR; // Khoảng cách tới Base 1
+                const r3 = distanceData["2"] * SCALE_FACTOR; // Khoảng cách tới Base 2
 
-                // Tính toán vị trí
+                // Tính toán vị trí (x, y)
                 const position = trilaterate(p1, p2, p3, r1, r2, r3);
 
                 if (position) {
+                    // Gửi tọa độ pixel xuống Dashboard để vẽ
                     tagPositions[tagId] = position;
-                    // Gửi xuống web ngay lập tức
                     io.emit('tags_update', tagPositions);
+                    
+                    console.log(`📍 ${tagId} -> X: ${Math.round(position.x)}, Y: ${Math.round(position.y)}`);
+                } else {
+                    console.log("⚠️ Không tính được giao điểm (Các vòng tròn không cắt nhau)");
                 }
             }
         } catch (e) {
-            console.error("Lỗi xử lý tin nhắn:", e.message);
+            console.error("Lỗi xử lý:", e.message);
         }
     }
 });
