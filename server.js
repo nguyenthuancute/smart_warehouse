@@ -228,25 +228,35 @@ client.on('message', (topic, message) => {
             }
 
             // Kiểm tra xem có đủ dữ liệu từ 3 Base không
+            // ... Bên trong client.on('message', ...)
+
             if (distanceData["0"] && distanceData["1"] && distanceData["2"]) {
                 
-                // ⚠️ HÃY CHỈNH SỐ NÀY CHO ĐÚNG VỚI KHO CỦA BẠN
-                // Ví dụ: 1 mét thực tế tương ứng 50 pixel trên bản đồ
-                const SCALE_FACTOR = 150; 
+                // --- CẤU HÌNH TỶ LỆ BẢN ĐỒ (QUAN TRỌNG) ---
+                // 1. Nhập chiều rộng thực tế của kho (theo mét)
+                const REAL_WIDTH_METERS = 5.53;  // Chiều ngang kho là 5m53
+                
+                // 2. Nhập chiều rộng của bức ảnh bản đồ bạn vẽ (theo Pixel)
+                // Cách xem: Chuột phải vào file ảnh map -> Properties -> Details -> Xem dòng Dimensions (ví dụ 800x1500)
+                const MAP_IMAGE_WIDTH_PX = 800; // <--- BẠN PHẢI SỬA SỐ NÀY ĐÚNG VỚI ẢNH CỦA BẠN
 
-                // Lấy tọa độ Anchor từ Database/Cache
-                const p1 = anchors[0]; // Anchor 1
-                const p2 = anchors[1]; // Anchor 2
-                const p3 = anchors[2]; // Anchor 3
+                // 3. Hệ thống tự tính tỷ lệ chuẩn
+                const SCALE_FACTOR = MAP_IMAGE_WIDTH_PX / REAL_WIDTH_METERS; 
+                
+                // Log ra để kiểm tra xem 1 mét bằng bao nhiêu pixel
+                // console.log("Tỷ lệ hiện tại: 1 mét =", SCALE_FACTOR, "pixels");
 
-                // Lấy khoảng cách và đổi ra Pixel
-                const r1 = distanceData["0"] * SCALE_FACTOR; // Khoảng cách tới Base 0
-                const r2 = distanceData["1"] * SCALE_FACTOR; // Khoảng cách tới Base 1
-                const r3 = distanceData["2"] * SCALE_FACTOR; // Khoảng cách tới Base 2
+                // ... (Phần lấy tọa độ p1, p2, p3 và tính toán bên dưới giữ nguyên) ...
+                const p1 = anchors[0]; 
+                const p2 = anchors[1]; 
+                const p3 = anchors[2]; 
 
-                // Tính toán vị trí (x, y)
+                const r1 = distanceData["0"] * SCALE_FACTOR;
+                const r2 = distanceData["1"] * SCALE_FACTOR;
+                const r3 = distanceData["2"] * SCALE_FACTOR;
+
                 const position = trilaterate(p1, p2, p3, r1, r2, r3);
-
+                // ...
                 if (position) {
                     // Gửi tọa độ pixel xuống Dashboard để vẽ
                     tagPositions[tagId] = position;
