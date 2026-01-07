@@ -9,6 +9,11 @@ const path = require('path');
 const bodyParser = require('body-parser');
 const session = require('express-session');
 const mongoose = require('mongoose'); 
+// --- BIẾN TOÀN CỤC ---
+let anchors = []; 
+let tagPositions = {};
+// Mặc định: Anchor cao 2.5m, Tag cao 1.0m
+let heightConfig = { anchorHeight: 2.5, tagHeight: 1.0 };
 
 // --- 1. KẾT NỐI MONGODB ---
 const mongoURI = process.env.MONGO_URI; 
@@ -133,6 +138,32 @@ const io = new Server(server);
 io.use((socket, next) => sessionMiddleware(socket.request, socket.request.res || {}, next));
 
 io.on('connection', async (socket) => {
+    socket.emit('height_config_update', heightConfig);
+
+    // Lắng nghe lệnh thay đổi độ cao từ Admin
+    socket.on('set_height_config', async (newConfig) => {
+        if (userRole !== 'admin') return;
+        
+        // Cập nhật biến RAM
+        heightConfig = {
+            anchorHeight: parseFloat(newConfig.anchorHeight),
+            tagHeight: parseFloat(newConfig.tagHeight)
+        };
+        
+        console.log("🛠️ Cập nhật độ cao:", heightConfig);
+
+        if (mongoURI) {
+            // Lưu vào DB (Lưu dưới dạng mảng để khớp với Schema cũ)
+            await Config.findOneAndUpdate(
+                { type: 'height_settings' }, 
+                { type: 'height_settings', data: [heightConfig] }, 
+                { upsert: true, new: true }
+            );
+        }
+        
+        // Báo cho tất cả mọi người biết là cấu hình đã đổi
+        io.emit('height_config_update', heightConfig);
+    });
     console.log('🔌 Client Web đã kết nối');
     const session = socket.request.session;
     // Nếu muốn bypass login để test thì bỏ dòng dưới
@@ -234,9 +265,10 @@ client.on('message', (topic, message) => {
 
                 // Hàm Pytago: Tính cạnh góc vuông nằm ngang (Khoảng cách sàn)
                 // Công thức: a = căn(c^2 - b^2)
+                const H_DIFF = Math.abs(heightConfig.anchorHeight - heightConfig.tagHeight); 
+
                 function getHorizontalDistance(rawDistance) {
-                    // Nếu nhiễu làm khoảng cách đo được < độ cao chênh lệch -> Coi như bằng 0
-                    if (rawDistance <= H_DIFF) return 0;
+                    if (rawDistance <= H_DIFF) return 0; // Nếu đo sai nhỏ hơn độ cao thì cho về 0
                     return Math.sqrt(Math.pow(rawDistance, 2) - Math.pow(H_DIFF, 2));
                 }
 
@@ -293,7 +325,22 @@ function trilaterate(p1, p2, p3, r1, r2, r3) {
         return { x, y };
     } catch { return null; }
 }
+async function loadDataFromDB() {
+    if (!mongoURI) return;
+    try {
+        // Tải Anchors
+        const anchorConfig = await Config.findOne({ type: 'anchors' });
+        if (anchorConfig) anchors = anchorConfig.data;
 
+        // Tải Cấu hình Độ cao (MỚI)
+        const hConfig = await Config.findOne({ type: 'height_settings' });
+        if (hConfig && hConfig.data && hConfig.data.length > 0) {
+            heightConfig = hConfig.data[0]; // Lưu dạng mảng [ {anchorHeight:..., tagHeight:...} ]
+        }
+        
+        console.log(`📡 Đã tải dữ liệu. Anchor Height: ${heightConfig.anchorHeight}m, Tag Height: ${heightConfig.tagHeight}m`);
+    } catch (e) { console.error("Lỗi tải dữ liệu:", e); }
+}
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`🚀 Server đang chạy tại port ${PORT}`);
