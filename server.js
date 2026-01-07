@@ -205,66 +205,70 @@ client.on('error', (err) => {
     console.error('❌ Lỗi MQTT:', err.message);
 });
 
+// ... (Các phần kết nối bên trên giữ nguyên) ...
+
 client.on('message', (topic, message) => {
     if (topic.startsWith(MQTT_TOPIC_PREFIX)) {
         try {
-            const tagId = topic.split('/').pop(); // Lấy ID tag (vd: tag01)
+            const tagId = topic.split('/').pop(); 
             const data = JSON.parse(message.toString());
             const distanceData = data.distances; 
 
-            // LOG KIỂM TRA DỮ LIỆU
-            // console.log(`Data nhận được: Base0=${distanceData["0"]}, Base1=${distanceData["1"]}, Base2=${distanceData["2"]}`);
-
-            // --- CẤU HÌNH MAP (MAPPING) ---
-            // Yêu cầu của bạn:
-            // Anchor 1 (trong mảng là index 0) <--> Base 0 (key "0")
-            // Anchor 2 (trong mảng là index 1) <--> Base 1 (key "1")
-            // Anchor 3 (trong mảng là index 2) <--> Base 2 (key "2")
-            
-            // Kiểm tra xem Admin đã đặt đủ 3 Anchor trên web chưa
-            if (anchors.length < 3) {
-                console.log("⚠️ Chưa đặt đủ Anchor trên bản đồ!");
-                return;
-            }
-
-            // Kiểm tra xem có đủ dữ liệu từ 3 Base không
-            // ... Bên trong client.on('message', ...)
+            if (anchors.length < 3) return;
 
             if (distanceData["0"] && distanceData["1"] && distanceData["2"]) {
                 
-                // --- CẤU HÌNH TỶ LỆ BẢN ĐỒ (QUAN TRỌNG) ---
-                // 1. Nhập chiều rộng thực tế của kho (theo mét)
-                const REAL_WIDTH_METERS = 5.53;  // Chiều ngang kho là 5m53
+                // --- 1. CẤU HÌNH TỶ LỆ & ĐỘ CAO (QUAN TRỌNG) ---
                 
-                // 2. Nhập chiều rộng của bức ảnh bản đồ bạn vẽ (theo Pixel)
-                // Cách xem: Chuột phải vào file ảnh map -> Properties -> Details -> Xem dòng Dimensions (ví dụ 800x1500)
-                const MAP_IMAGE_WIDTH_PX = 800; // <--- BẠN PHẢI SỬA SỐ NÀY ĐÚNG VỚI ẢNH CỦA BẠN
-
-                // 3. Hệ thống tự tính tỷ lệ chuẩn
+                const REAL_WIDTH_METERS = 5.53;  // Chiều rộng kho thực tế
+                const MAP_IMAGE_WIDTH_PX = 800;  // Chiều rộng ảnh bản đồ (Pixel)
                 const SCALE_FACTOR = MAP_IMAGE_WIDTH_PX / REAL_WIDTH_METERS; 
-                
-                // Log ra để kiểm tra xem 1 mét bằng bao nhiêu pixel
-                // console.log("Tỷ lệ hiện tại: 1 mét =", SCALE_FACTOR, "pixels");
 
-                // ... (Phần lấy tọa độ p1, p2, p3 và tính toán bên dưới giữ nguyên) ...
+                // --- TÍNH NĂNG MỚI: BÙ TRỪ ĐỘ CAO (PYTAGO) ---
+                // Hãy đo và nhập số liệu thực tế tại đây (đơn vị: Mét)
+                const ANCHOR_HEIGHT = 2.5; // Ví dụ: Anchor treo cao 2.5m
+                const TAG_HEIGHT = 1.0;    // Ví dụ: Tag để trên xe cao 1.0m
+                
+                // Cạnh góc vuông thẳng đứng (Chênh lệch độ cao)
+                const H_DIFF = Math.abs(ANCHOR_HEIGHT - TAG_HEIGHT); 
+
+                // Hàm Pytago: Tính cạnh góc vuông nằm ngang (Khoảng cách sàn)
+                // Công thức: a = căn(c^2 - b^2)
+                function getHorizontalDistance(rawDistance) {
+                    // Nếu nhiễu làm khoảng cách đo được < độ cao chênh lệch -> Coi như bằng 0
+                    if (rawDistance <= H_DIFF) return 0;
+                    return Math.sqrt(Math.pow(rawDistance, 2) - Math.pow(H_DIFF, 2));
+                }
+
+                // --- 2. XỬ LÝ DỮ LIỆU ---
                 const p1 = anchors[0]; 
                 const p2 = anchors[1]; 
                 const p3 = anchors[2]; 
 
-                const r1 = distanceData["0"] * SCALE_FACTOR;
-                const r2 = distanceData["1"] * SCALE_FACTOR;
-                const r3 = distanceData["2"] * SCALE_FACTOR;
+                // Lấy khoảng cách thô (Cạnh huyền) từ cảm biến
+                const d1_raw = distanceData["0"];
+                const d2_raw = distanceData["1"];
+                const d3_raw = distanceData["2"];
 
+                // Áp dụng Pytago để lấy khoảng cách trên mặt sàn (Projected Distance)
+                const d1_floor = getHorizontalDistance(d1_raw);
+                const d2_floor = getHorizontalDistance(d2_raw);
+                const d3_floor = getHorizontalDistance(d3_raw);
+
+                // Đổi ra Pixel để vẽ
+                const r1 = d1_floor * SCALE_FACTOR;
+                const r2 = d2_floor * SCALE_FACTOR;
+                const r3 = d3_floor * SCALE_FACTOR;
+
+                // Log kiểm tra (Bạn có thể tắt đi khi chạy thật)
+                // console.log(`Raw: ${d1_raw.toFixed(2)}m -> Floor: ${d1_floor.toFixed(2)}m (Diff: ${H_DIFF}m)`);
+
+                // Tính toán vị trí (x, y)
                 const position = trilaterate(p1, p2, p3, r1, r2, r3);
-                // ...
+
                 if (position) {
-                    // Gửi tọa độ pixel xuống Dashboard để vẽ
                     tagPositions[tagId] = position;
                     io.emit('tags_update', tagPositions);
-                    
-                    console.log(`📍 ${tagId} -> X: ${Math.round(position.x)}, Y: ${Math.round(position.y)}`);
-                } else {
-                    console.log("⚠️ Không tính được giao điểm (Các vòng tròn không cắt nhau)");
                 }
             }
         } catch (e) {
@@ -272,7 +276,6 @@ client.on('message', (topic, message) => {
         }
     }
 });
-
 // --- HÀM TOÁN HỌC TRILATERATION ---
 function trilaterate(p1, p2, p3, r1, r2, r3) {
     try {
