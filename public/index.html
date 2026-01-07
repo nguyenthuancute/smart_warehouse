@@ -72,10 +72,7 @@
             <button id="cancelBayDataButton" class="editable">Hủy</button>
             <button id="closeBayDataButton" class="readonly">Đóng</button>
         </div>
-    </div>
-    <script src="/socket.io/socket.io.js"></script>
-    <script src="client.js"></script>
-    <div style="position: absolute; top: 10px; right: 10px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); z-index: 1000;">
+        <div style="position: absolute; top: 10px; right: 10px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); z-index: 1000;">
     <h3 style="margin: 0 0 10px 0; font-size: 16px;">⚙️ Cấu hình Độ cao (Mét)</h3>
     
     <div style="margin-bottom: 5px;">
@@ -91,31 +88,46 @@
     <button onclick="saveHeightSettings()" style="width: 100%; background: #2196F3; color: white; border: none; padding: 5px; cursor: pointer;">Lưu Cấu hình</button>
     <div id="statusMsg" style="font-size: 12px; margin-top: 5px; color: green;"></div>
 </div>
+    </div>
+    <script>
+        const socket = io(); // Dòng này cực quan trọng, code mới phải nằm DƯỚI dòng này
+        socket.on('height_config_update', (config) => {
+            // Kiểm tra xem phần tử có tồn tại không trước khi gán giá trị (tránh lỗi null)
+            const inpAnchor = document.getElementById('inpAnchorH');
+            const inpTag = document.getElementById('inpTagH');
+            
+            if (inpAnchor && inpTag) {
+                inpAnchor.value = config.anchorHeight;
+                inpTag.value = config.tagHeight;
+                console.log("Đã cập nhật hiển thị độ cao:", config);
+            }
+        });
+
+        // 2. Hàm gửi cấu hình mới lên Server (khi bấm nút Lưu)
+        function saveHeightSettings() {
+            const anchorH = document.getElementById('inpAnchorH').value;
+            const tagH = document.getElementById('inpTagH').value;
+
+            if(anchorH && tagH) {
+                // Gửi dữ liệu qua Socket
+                socket.emit('set_height_config', {
+                    anchorHeight: anchorH,
+                    tagHeight: tagH
+                });
+                
+                // Hiệu ứng báo thành công (Hiện chữ xanh rồi tắt)
+                const msg = document.getElementById('statusMsg');
+                if (msg) {
+                    msg.innerText = "Đã lưu thành công!";
+                    setTimeout(() => msg.innerText = "", 3000);
+                }
+            } else {
+                alert("Vui lòng nhập đủ thông tin độ cao!");
+            }
+        }
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="client.js"></script>
+   
+</div>
 </body>
 </html>
-// 1. Nhận cấu hình hiện tại từ Server khi mới vào web
-socket.on('height_config_update', (config) => {
-    document.getElementById('inpAnchorH').value = config.anchorHeight;
-    document.getElementById('inpTagH').value = config.tagHeight;
-    console.log("Đã cập nhật hiển thị độ cao:", config);
-});
-
-// 2. Gửi cấu hình mới lên Server khi bấm nút Lưu
-function saveHeightSettings() {
-    const anchorH = document.getElementById('inpAnchorH').value;
-    const tagH = document.getElementById('inpTagH').value;
-
-    if(anchorH && tagH) {
-        socket.emit('set_height_config', {
-            anchorHeight: anchorH,
-            tagHeight: tagH
-        });
-        
-        // Hiệu ứng báo thành công
-        const msg = document.getElementById('statusMsg');
-        msg.innerText = "Đã lưu thành công!";
-        setTimeout(() => msg.innerText = "", 3000);
-    } else {
-        alert("Vui lòng nhập đủ thông tin!");
-    }
-}
