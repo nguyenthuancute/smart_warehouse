@@ -36,7 +36,30 @@
         </div>
     </main>
 
-    <div id="bayContextMenu">
+    <div style="position: absolute; top: 80px; right: 20px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); z-index: 1000; border: 1px solid #ddd;">
+        <h3 style="margin: 0 0 10px 0; font-size: 16px; color: #333; border-bottom: 1px solid #eee; padding-bottom: 5px;">
+            ⚙️ Cấu hình Độ cao
+        </h3>
+        
+        <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+            <label style="font-size: 14px;">Anchor:</label>
+            <div>
+                <input type="number" id="inpAnchorH" step="0.1" style="width: 50px; padding: 3px;"> <span style="font-size: 12px;">m</span>
+            </div>
+        </div>
+        
+        <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+            <label style="font-size: 14px;">Tag:</label>
+            <div>
+                <input type="number" id="inpTagH" step="0.1" style="width: 50px; padding: 3px;"> <span style="font-size: 12px;">m</span>
+            </div>
+        </div>
+
+        <button onclick="saveHeightSettings()" style="width: 100%; background: #2196F3; color: white; border: none; padding: 8px; border-radius: 4px; cursor: pointer; font-weight: bold;">Lưu Cấu hình</button>
+        <div id="statusMsg" style="font-size: 12px; margin-top: 5px; color: green; text-align: center; height: 15px;"></div>
+    </div>
+
+    <div id="bayContextMenu" class="hidden">
         <div class="context-menu-header">
             Chi Tiết Ô Kho (ID: <span id="bayIdTitle"></span>)
         </div>
@@ -72,27 +95,18 @@
             <button id="cancelBayDataButton" class="editable">Hủy</button>
             <button id="closeBayDataButton" class="readonly">Đóng</button>
         </div>
-        <div style="position: absolute; top: 10px; right: 10px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); z-index: 1000;">
-    <h3 style="margin: 0 0 10px 0; font-size: 16px;">⚙️ Cấu hình Độ cao (Mét)</h3>
-    
-    <div style="margin-bottom: 5px;">
-        <label>Độ cao Anchor:</label>
-        <input type="number" id="inpAnchorH" step="0.1" style="width: 60px;"> m
-    </div>
-    
-    <div style="margin-bottom: 10px;">
-        <label>Độ cao Tag:</label>
-        <input type="number" id="inpTagH" step="0.1" style="width: 60px; margin-left: 22px;"> m
     </div>
 
-    <button onclick="saveHeightSettings()" style="width: 100%; background: #2196F3; color: white; border: none; padding: 5px; cursor: pointer;">Lưu Cấu hình</button>
-    <div id="statusMsg" style="font-size: 12px; margin-top: 5px; color: green;"></div>
-</div>
-    </div>
+    <script src="/socket.io/socket.io.js"></script>
+
     <script>
-        const socket = io(); // Dòng này cực quan trọng, code mới phải nằm DƯỚI dòng này
+        // Khởi tạo kết nối Socket
+        const socket = io();
+
+        // --- XỬ LÝ CẤU HÌNH ĐỘ CAO ---
+        
+        // 1. Nhận thông tin từ Server để hiển thị
         socket.on('height_config_update', (config) => {
-            // Kiểm tra xem phần tử có tồn tại không trước khi gán giá trị (tránh lỗi null)
             const inpAnchor = document.getElementById('inpAnchorH');
             const inpTag = document.getElementById('inpTagH');
             
@@ -103,19 +117,17 @@
             }
         });
 
-        // 2. Hàm gửi cấu hình mới lên Server (khi bấm nút Lưu)
+        // 2. Gửi thông tin mới lên Server
         function saveHeightSettings() {
             const anchorH = document.getElementById('inpAnchorH').value;
             const tagH = document.getElementById('inpTagH').value;
 
             if(anchorH && tagH) {
-                // Gửi dữ liệu qua Socket
                 socket.emit('set_height_config', {
                     anchorHeight: anchorH,
                     tagHeight: tagH
                 });
                 
-                // Hiệu ứng báo thành công (Hiện chữ xanh rồi tắt)
                 const msg = document.getElementById('statusMsg');
                 if (msg) {
                     msg.innerText = "Đã lưu thành công!";
@@ -125,9 +137,9 @@
                 alert("Vui lòng nhập đủ thông tin độ cao!");
             }
         }
-    <script src="/socket.io/socket.io.js"></script>
+    </script>
+
     <script src="client.js"></script>
-   
-</div>
+
 </body>
 </html>
