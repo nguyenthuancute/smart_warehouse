@@ -15,18 +15,40 @@
     <main>
         <div class="controls">
             <h2>Bảng điều khiển</h2>
-            <p>Tải lên bản đồ kho của bạn (dưới dạng ảnh .png hoặc .jpg).</p>
+            
+            <p>1. Tải lên bản đồ kho (.png/.jpg):</p>
             <input type="file" id="mapUploader" accept="image/*">
             
-            <p id="instructions">
-                Nhấn "Bắt đầu Thêm Anchor" để vào chế độ đặt vị trí bằng cách click chuột.
-            </p>
-            <button id="resetButton">Đặt lại Anchors</button>
-            <button id="toggleAddAnchorModeButton">Sửa Vị trí Anchor</button>
-            <button id="toggleAddBayModeButton">Thêm/Sửa Ô Kho</button>
+            <div style="margin: 15px 0; padding: 10px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px;">
+                <label style="font-weight: bold; font-size: 14px; display: block; margin-bottom: 8px;">2. Kích thước thực tế (m):</label>
+                <div style="display: flex; gap: 5px; align-items: center;">
+                    <div style="flex: 1;">
+                        <input type="number" id="realWidthInput" placeholder="Rộng" step="0.1" style="width: 100%; padding: 5px;">
+                        <div style="font-size: 11px; color: #666; margin-top: 2px;">Rộng (X)</div>
+                    </div>
+                    <span style="font-weight: bold;">x</span>
+                    <div style="flex: 1;">
+                        <input type="number" id="realLengthInput" placeholder="Dài" step="0.1" style="width: 100%; padding: 5px;">
+                        <div style="font-size: 11px; color: #666; margin-top: 2px;">Dài (Y)</div>
+                    </div>
+                </div>
+                <button onclick="saveMapDimensions()" style="width: 100%; margin-top: 8px; background: #4CAF50; color: white; border: none; padding: 6px; cursor: pointer; border-radius: 3px;">Lưu Kích Thước</button>
+            </div>
             
-            <div id="anchorInfo">
-                <h3 id="anchorStatus">Vị trí Anchor (pixel):</h3>
+            <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
+
+            <p id="instructions">
+                3. Nhấn "Sửa Vị trí Anchor" để đặt các trạm thu phát.
+            </p>
+            
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <button id="resetButton">Đặt lại Anchors</button>
+                <button id="toggleAddAnchorModeButton">Sửa Vị trí Anchor</button>
+                <button id="toggleAddBayModeButton">Thêm/Sửa Ô Kho</button>
+            </div>
+            
+            <div id="anchorInfo" style="margin-top: 15px;">
+                <h3 id="anchorStatus" style="font-size: 14px;">Vị trí Anchor (pixel):</h3>
             </div>
         </div>
 
@@ -36,7 +58,7 @@
         </div>
     </main>
 
-    <div style="position: absolute; top: 80px; right: 20px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); z-index: 1000; border: 1px solid #ddd;">
+    <div style="position: absolute; top: 80px; right: 20px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); z-index: 1000; border: 1px solid #ddd; width: 200px;">
         <h3 style="margin: 0 0 10px 0; font-size: 16px; color: #333; border-bottom: 1px solid #eee; padding-bottom: 5px;">
             ⚙️ Cấu hình Độ cao
         </h3>
@@ -44,102 +66,15 @@
         <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
             <label style="font-size: 14px;">Anchor:</label>
             <div>
-                <input type="number" id="inpAnchorH" step="0.1" style="width: 50px; padding: 3px;"> <span style="font-size: 12px;">m</span>
+                <input type="number" id="inpAnchorH" step="0.1" style="width: 60px; padding: 3px;"> <span style="font-size: 12px;">m</span>
             </div>
         </div>
         
         <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
             <label style="font-size: 14px;">Tag:</label>
             <div>
-                <input type="number" id="inpTagH" step="0.1" style="width: 50px; padding: 3px;"> <span style="font-size: 12px;">m</span>
+                <input type="number" id="inpTagH" step="0.1" style="width: 60px; padding: 3px;"> <span style="font-size: 12px;">m</span>
             </div>
         </div>
 
-        <button onclick="saveHeightSettings()" style="width: 100%; background: #2196F3; color: white; border: none; padding: 8px; border-radius: 4px; cursor: pointer; font-weight: bold;">Lưu Cấu hình</button>
-        <div id="statusMsg" style="font-size: 12px; margin-top: 5px; color: green; text-align: center; height: 15px;"></div>
-    </div>
-
-    <div id="bayContextMenu" class="hidden">
-        <div class="context-menu-header">
-            Chi Tiết Ô Kho (ID: <span id="bayIdTitle"></span>)
-        </div>
-        <div class="context-menu-content">
-            <div class="tier-row">
-                <label for="bayTier1Code">Tầng 1:</label>
-                <input type="text" class="editable" id="bayTier1Code" placeholder="Mã hàng...">
-                <input type="checkbox" class="editable" id="bayTier1Occupied">
-                <label class="editable" for="bayTier1Occupied">Đã chiếm</label>
-                <span class="readonly" id="bayTier1_ro_code"></span>
-                <span class="readonly" id="bayTier1_ro_status"></span>
-            </div>
-            <div class="tier-row">
-                <label for="bayTier2Code">Tầng 2:</label>
-                <input type="text" class="editable" id="bayTier2Code" placeholder="Mã hàng...">
-                <input type="checkbox" class="editable" id="bayTier2Occupied">
-                <label class="editable" for="bayTier2Occupied">Đã chiếm</label>
-                <span class="readonly" id="bayTier2_ro_code"></span>
-                <span class="readonly" id="bayTier2_ro_status"></span>
-            </div>
-            <div class="tier-row">
-                <label for="bayTier3Code">Tầng 3:</label>
-                <input type="text" class="editable" id="bayTier3Code" placeholder="Mã hàng...">
-                <input type="checkbox" class="editable" id="bayTier3Occupied">
-                <label class="editable" for="bayTier3Occupied">Đã chiếm</label>
-                <span class="readonly" id="bayTier3_ro_code"></span>
-                <span class="readonly" id="bayTier3_ro_status"></span>
-            </div>
-        </div>
-        <div class="context-menu-footer">
-            <button id="deleteBayButton" class="btn-danger editable">Xóa Ô Này</button> 
-            <button id="saveBayDataButton" class="editable">Lưu</button>
-            <button id="cancelBayDataButton" class="editable">Hủy</button>
-            <button id="closeBayDataButton" class="readonly">Đóng</button>
-        </div>
-    </div>
-
-    <script src="/socket.io/socket.io.js"></script>
-
-    <script>
-        // Khởi tạo kết nối Socket
-        const socket = io();
-
-        // --- XỬ LÝ CẤU HÌNH ĐỘ CAO ---
-        
-        // 1. Nhận thông tin từ Server để hiển thị
-        socket.on('height_config_update', (config) => {
-            const inpAnchor = document.getElementById('inpAnchorH');
-            const inpTag = document.getElementById('inpTagH');
-            
-            if (inpAnchor && inpTag) {
-                inpAnchor.value = config.anchorHeight;
-                inpTag.value = config.tagHeight;
-                console.log("Đã cập nhật hiển thị độ cao:", config);
-            }
-        });
-
-        // 2. Gửi thông tin mới lên Server
-        function saveHeightSettings() {
-            const anchorH = document.getElementById('inpAnchorH').value;
-            const tagH = document.getElementById('inpTagH').value;
-
-            if(anchorH && tagH) {
-                socket.emit('set_height_config', {
-                    anchorHeight: anchorH,
-                    tagHeight: tagH
-                });
-                
-                const msg = document.getElementById('statusMsg');
-                if (msg) {
-                    msg.innerText = "Đã lưu thành công!";
-                    setTimeout(() => msg.innerText = "", 3000);
-                }
-            } else {
-                alert("Vui lòng nhập đủ thông tin độ cao!");
-            }
-        }
-    </script>
-
-    <script src="client.js"></script>
-
-</body>
-</html>
+        <button onclick="saveHeightSettings()" style="width: 100%; background: #2196F3; color: white; border: none; padding: 8px; border-radius: 4px; cursor
