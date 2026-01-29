@@ -1,344 +1,168 @@
-require('dotenv').config(); 
-const MongoStore = require('connect-mongo');
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const { Server } = require("socket.io");
 const mqtt = require('mqtt');
-const path = require('path');
 const bodyParser = require('body-parser');
-const session = require('express-session');
-const mongoose = require('mongoose'); 
 
-// --- BIẾN TOÀN CỤC ---
-let anchors = []; 
-let tagPositions = {};
-// Mặc định: Anchor cao 2.5m, Tag cao 1.0m
-let heightConfig = { anchorHeight: 2.5, tagHeight: 1.0 };
-
-// [MỚI] Biến lưu kích thước kho thực tế (Mét) - Mặc định 10x20m
-let mapDimensions = { width: 10.0, length: 20.0 }; 
-// Server quy định ảnh bản đồ chuẩn luôn được xử lý ở mốc 800px chiều rộng
-const SERVER_MAP_PIXEL_WIDTH = 800; 
-
-// --- 1. KẾT NỐI MONGODB ---
-const mongoURI = process.env.MONGO_URI; 
-if (!mongoURI) {
-    console.error("LỖI: Chưa cấu hình MONGO_URI trong file .env!");
-} else {
-    mongoose.connect(mongoURI)
-        .then(() => console.log('✅ Đã kết nối thành công tới MongoDB Atlas'))
-        .catch(err => console.error('❌ Lỗi kết nối MongoDB:', err));
-}
-
-// --- 2. ĐỊNH NGHĨA SCHEMA ---
-const UserSchema = new mongoose.Schema({
-    username: { type: String, required: true, unique: true },
-    password: { type: String, required: true },
-    role: { type: String, default: 'employee' }
-});
-const User = mongoose.model('User', UserSchema);
-
-const ConfigSchema = new mongoose.Schema({
-    type: { type: String, unique: true }, 
-    data: Array
-});
-const Config = mongoose.model('Config', ConfigSchema);
-
-const BaySchema = new mongoose.Schema({
-    id: Number, x: Number, y: Number, tiers: Array
-});
-const Bay = mongoose.model('Bay', BaySchema);
-
-
-// --- 3. KHỞI TẠO APP ---
+// --- CẤU HÌNH ---
 const app = express();
 const server = http.createServer(app);
-
-// Cấu hình Session
-const sessionMiddleware = session({
-    secret: 'secret-key-kho-thong-minh',
-    resave: false,
-    saveUninitialized: false,
-    store: mongoURI ? MongoStore.create({
-        mongoUrl: mongoURI,
-        ttl: 24 * 60 * 60, 
-        touchAfter: 24 * 3600, 
-        autoRemove: 'native'
-    }) : null, 
-    cookie: { maxAge: 24 * 60 * 60 * 1000 }
-});
-
-app.use(sessionMiddleware);
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static('public'));
-app.use(express.json()); 
-
-// --- 4. HÀM TẢI DỮ LIỆU TỪ DB ---
-async function loadDataFromDB() {
-    if (!mongoURI) return;
-    try {
-        // Tải Anchors
-        const anchorConfig = await Config.findOne({ type: 'anchors' });
-        if (anchorConfig) anchors = anchorConfig.data;
-
-        // Tải Cấu hình Độ cao
-        const hConfig = await Config.findOne({ type: 'height_settings' });
-        if (hConfig && hConfig.data && hConfig.data.length > 0) {
-            heightConfig = hConfig.data[0]; 
-        }
-
-        // [MỚI] Tải Kích thước Map
-        const mapDimConfig = await Config.findOne({ type: 'map_dimensions' });
-        if (mapDimConfig && mapDimConfig.data && mapDimConfig.data.length > 0) {
-            mapDimensions = mapDimConfig.data[0];
-        }
-        
-        console.log(`📡 Dữ liệu: Map ${mapDimensions.width}x${mapDimensions.length}m | Height: A=${heightConfig.anchorHeight}m T=${heightConfig.tagHeight}m`);
-    } catch (e) { console.error("Lỗi tải dữ liệu:", e); }
-}
-loadDataFromDB(); // Gọi hàm khi khởi động
-
-// --- 5. ROUTE AUTHENTICATION ---
-app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
-app.get('/register', (req, res) => res.sendFile(path.join(__dirname, 'public', 'register.html')));
-
-app.post('/register', async (req, res) => {
-    const { username, password, role } = req.body;
-    try {
-        if (mongoURI) {
-            const existingUser = await User.findOne({ username });
-            if (existingUser) return res.send('Tên tồn tại. <a href="/register">Thử lại</a>');
-            const newUser = new User({ username, password, role });
-            await newUser.save();
-        }
-        res.redirect('/login');
-    } catch (e) { res.status(500).send("Lỗi: " + e.message); }
-});
-
-app.post('/login', async (req, res) => {
-    const { username, password } = req.body;
-    try {
-        let user = null;
-        if (mongoURI) {
-            user = await User.findOne({ username, password });
-        } else {
-            if (username === 'admin' && password === 'admin') user = { username: 'admin', role: 'admin' };
-        }
-
-        if (user) {
-            req.session.user = { username: user.username, role: user.role };
-            req.session.save();
-            res.redirect('/');
-        } else {
-            res.send('Sai thông tin. <a href="/login">Thử lại</a>');
-        }
-    } catch (e) { res.status(500).send("Lỗi server"); }
-});
-
-app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/login')));
-
-function checkAuth(req, res, next) {
-    if (req.session.user) next();
-    else res.redirect('/login');
-}
-
-app.get('/', checkAuth, (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-app.get('/api/me', checkAuth, (req, res) => res.json(req.session.user));
-
-
-// --- 6. SOCKET.IO ---
 const io = new Server(server);
-io.use((socket, next) => sessionMiddleware(socket.request, socket.request.res || {}, next));
 
-io.on('connection', async (socket) => {
-    console.log('🔌 Client Web đã kết nối');
-    const session = socket.request.session;
-    if (!session.user) { /* socket.disconnect(); return; */ } 
-    const userRole = session.user ? session.user.role : 'admin';
+app.use(express.static('public'));
+app.use(express.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
-    // Gửi các cấu hình hiện tại cho Client mới vào
-    socket.emit('height_config_update', heightConfig);
-    socket.emit('map_dimensions_update', mapDimensions); // [MỚI]
+// --- DỮ LIỆU BỘ NHỚ (RAM) ---
+// Anchor bây giờ có dạng: { id: 1, x: 0, y: 0, z: 2.5 }
+let anchors = []; 
+let tagPositions = {};
+// Kích thước phòng (Mặc định)
+let roomConfig = { width: 10, length: 20, height: 4 };
+
+// --- SOCKET.IO ---
+io.on('connection', (socket) => {
+    console.log('🔌 Client connected');
+
+    // Gửi cấu hình hiện tại cho user mới
+    socket.emit('room_config_update', roomConfig);
     socket.emit('anchors_updated', anchors);
-    socket.emit('tags_update', tagPositions);
-    
-    if (mongoURI) {
-        const allBays = await Bay.find({}).sort({ id: 1 });
-        socket.emit('bays_updated', allBays);
-    }
 
-    // --- SỰ KIỆN: CẬP NHẬT ĐỘ CAO ---
-    socket.on('set_height_config', async (newConfig) => {
-        if (userRole !== 'admin') return;
-        heightConfig = {
-            anchorHeight: parseFloat(newConfig.anchorHeight),
-            tagHeight: parseFloat(newConfig.tagHeight)
-        };
-        console.log("🛠️ Cập nhật độ cao:", heightConfig);
-        if (mongoURI) {
-            await Config.findOneAndUpdate(
-                { type: 'height_settings' }, 
-                { type: 'height_settings', data: [heightConfig] }, 
-                { upsert: true, new: true }
-            );
-        }
-        io.emit('height_config_update', heightConfig);
+    // 1. Nhận cấu hình kích thước phòng
+    socket.on('update_room_config', (config) => {
+        roomConfig = config; // { width, length, height, originCorner }
+        io.emit('room_config_update', roomConfig);
     });
 
-    // --- [MỚI] SỰ KIỆN: CẬP NHẬT KÍCH THƯỚC MAP ---
-    socket.on('set_map_dimensions', async (dims) => {
-        if (userRole !== 'admin') return;
-        
-        mapDimensions = {
-            width: parseFloat(dims.width),
-            length: parseFloat(dims.length)
-        };
-        console.log("📏 Cập nhật kích thước kho:", mapDimensions);
-
-        if (mongoURI) {
-            await Config.findOneAndUpdate(
-                { type: 'map_dimensions' }, 
-                { type: 'map_dimensions', data: [mapDimensions] }, 
-                { upsert: true, new: true }
-            );
-        }
-        io.emit('map_dimensions_update', mapDimensions);
-    });
-
-    // --- CÁC SỰ KIỆN KHÁC ---
-    socket.on('set_anchors', async (anchorPositions) => {
-        if (userRole !== 'admin') return;
-        anchors = anchorPositions;
-        if (mongoURI) {
-            await Config.findOneAndUpdate({ type: 'anchors' }, { type: 'anchors', data: anchors }, { upsert: true, new: true });
-        }
+    // 2. Nhận danh sách Anchor từ Admin (x, y, z)
+    socket.on('set_anchors', (newAnchors) => {
+        anchors = newAnchors;
+        console.log("📡 Updated Anchors:", anchors);
         io.emit('anchors_updated', anchors);
     });
-
-    socket.on('set_bays_layout', async (bays) => {
-        if (userRole !== 'admin') return;
-        if (mongoURI) {
-            await Bay.deleteMany({});
-            if (bays.length > 0) await Bay.insertMany(bays);
-            const updatedBays = await Bay.find({}).sort({ id: 1 });
-            io.emit('bays_updated', updatedBays);
-        }
-    });
-
-    socket.on('update_bay_data', async (updatedBay) => {
-        if (mongoURI) {
-            await Bay.findOneAndUpdate({ id: updatedBay.id }, updatedBay);
-            const allBays = await Bay.find({}).sort({ id: 1 });
-            io.emit('bays_updated', allBays);
-        }
-    });
 });
 
-
-// --- 7. MQTT (HIVEMQ CLUSTER BẢO MẬT) ---
-const MQTT_HOST = 'ac283ced08d54c199286b8bdb567f195.s1.eu.hivemq.cloud';
+// --- MQTT (NHẬN KHOẢNG CÁCH) ---
+const MQTT_HOST = 'ac283ced08d54c199286b8bdb567f195.s1.eu.hivemq.cloud'; // Điền lại host của bạn
 const MQTT_PORT = 8883;
-const MQTT_USER = 'smart_warehouse';
-const MQTT_PASS = 'Thuan@06032006';
-
-const MQTT_TOPIC_PREFIX = 'kho_thong_minh/tags/';
-const MQTT_TOPIC_WILDCARD = MQTT_TOPIC_PREFIX + '+';
-
-console.log(`⏳ Đang kết nối MQTT Cluster: ${MQTT_HOST}...`);
+const MQTT_USER = 'smart_warehouse'; // Điền user của bạn
+const MQTT_PASS = 'Thuan@06032006'; // Điền pass của bạn
 
 const client = mqtt.connect(`mqtts://${MQTT_HOST}`, {
     port: MQTT_PORT,
     username: MQTT_USER,
     password: MQTT_PASS,
-    protocol: 'mqtts', 
-    rejectUnauthorized: true 
+    protocol: 'mqtts',
+    rejectUnauthorized: true
 });
 
 client.on('connect', () => {
-    console.log('✅ Server đã kết nối HiveMQ Cluster thành công!');
-    client.subscribe(MQTT_TOPIC_WILDCARD);
-});
-
-client.on('error', (err) => {
-    console.error('❌ Lỗi MQTT:', err.message);
+    console.log('✅ MQTT Connected');
+    client.subscribe('kho_thong_minh/tags/+');
 });
 
 client.on('message', (topic, message) => {
-    if (topic.startsWith(MQTT_TOPIC_PREFIX)) {
-        try {
-            const tagId = topic.split('/').pop(); 
-            const data = JSON.parse(message.toString());
-            const distanceData = data.distances; 
+    try {
+        const tagId = topic.split('/').pop();
+        const data = JSON.parse(message.toString());
+        const dists = data.distances; // { "0": 5.2, "1": 3.1, "2": 4.5, "3": 2.1 }
 
-            if (anchors.length < 3) return;
+        // Yêu cầu tối thiểu 4 Anchor để định vị 3D chính xác
+        if (anchors.length < 4) return;
 
-            if (distanceData["0"] && distanceData["1"] && distanceData["2"]) {
-                
-                // --- 1. TÍNH TỶ LỆ DỰA TRÊN KÍCH THƯỚC WEB GỬI LÊN ---
-                // Lấy chiều rộng từ biến mapDimensions (đã cập nhật từ web)
-                const realW = mapDimensions.width > 0 ? mapDimensions.width : 10;
-                
-                // Công thức Scale: 800 pixel / Chiều rộng thực tế (m)
-                const SCALE_FACTOR = SERVER_MAP_PIXEL_WIDTH / realW; 
+        // Map dữ liệu khoảng cách vào Anchor tọa độ
+        // Giả sử distance "0" ứng với anchors[0], "1" ứng với anchors[1]...
+        // Cần đảm bảo anchors đã được sort đúng thứ tự ID
+        
+        let p1 = anchors[0], r1 = dists["0"];
+        let p2 = anchors[1], r2 = dists["1"];
+        let p3 = anchors[2], r3 = dists["2"];
+        let p4 = anchors[3], r4 = dists["3"];
 
-                // --- 2. BÙ TRỪ ĐỘ CAO (PYTAGO) ---
-                // Tính chênh lệch độ cao
-                const H_DIFF = Math.abs(heightConfig.anchorHeight - heightConfig.tagHeight); 
-
-                // Hàm Pytago
-                function getHorizontalDistance(rawDistance) {
-                    if (rawDistance <= H_DIFF) return 0; 
-                    return Math.sqrt(Math.pow(rawDistance, 2) - Math.pow(H_DIFF, 2));
-                }
-
-                // --- 3. XỬ LÝ DỮ LIỆU ---
-                const p1 = anchors[0]; 
-                const p2 = anchors[1]; 
-                const p3 = anchors[2]; 
-
-                // Áp dụng Pytago cho các khoảng cách thô
-                const d1_floor = getHorizontalDistance(distanceData["0"]);
-                const d2_floor = getHorizontalDistance(distanceData["1"]);
-                const d3_floor = getHorizontalDistance(distanceData["2"]);
-
-                // Đổi ra Pixel để vẽ
-                const r1 = d1_floor * SCALE_FACTOR;
-                const r2 = d2_floor * SCALE_FACTOR;
-                const r3 = d3_floor * SCALE_FACTOR;
-
-                // Tính toán vị trí (x, y)
-                const position = trilaterate(p1, p2, p3, r1, r2, r3);
-
-                if (position) {
-                    tagPositions[tagId] = position;
-                    io.emit('tags_update', tagPositions);
-                }
+        if (r1 && r2 && r3 && r4) {
+            // Tính toán 3D
+            const pos = trilaterate3D(p1, p2, p3, p4, r1, r2, r3, r4);
+            
+            if (pos) {
+                tagPositions[tagId] = pos;
+                io.emit('tags_update', tagPositions);
+                // console.log(`📍 ${tagId}: [${pos.x.toFixed(2)}, ${pos.y.toFixed(2)}, ${pos.z.toFixed(2)}]`);
             }
-        } catch (e) {
-            console.error("Lỗi xử lý:", e.message);
         }
-    }
+    } catch (e) { console.error(e); }
 });
 
-// --- HÀM TOÁN HỌC TRILATERATION ---
-function trilaterate(p1, p2, p3, r1, r2, r3) {
+// --- THUẬT TOÁN ĐỊNH VỊ 3D (4 HÌNH CẦU) ---
+function trilaterate3D(p1, p2, p3, p4, r1, r2, r3, r4) {
     try {
-        const A = 2 * p2.x - 2 * p1.x;
-        const B = 2 * p2.y - 2 * p1.y;
-        const C = r1**2 - r2**2 - p1.x**2 + p2.x**2 - p1.y**2 + p2.y**2;
-        const D = 2 * p3.x - 2 * p2.x;
-        const E = 2 * p3.y - 2 * p2.y;
-        const F = r2**2 - r3**2 - p2.x**2 + p3.x**2 - p2.y**2 + p3.y**2;
+        // Đây là bài toán giải hệ phương trình cầu.
+        // Để đơn giản và nhanh trong Node.js, ta dùng thuật toán hình học:
+        // Bước 1: Tìm giao điểm của 3 mặt cầu đầu tiên (thường ra 2 điểm).
+        // Bước 2: Dùng mặt cầu thứ 4 để chọn điểm đúng nhất.
+
+        // Chuyển đổi công thức đại số tuyến tính (Linear Algebra)
+        // Cách giải đơn giản nhất cho 3D Trilateration:
+        // x^2 + y^2 + z^2 = r^2
+        // Ta dùng thư viện hoặc công thức trực tiếp. Ở đây tôi viết hàm custom đơn giản hóa:
         
-        const x = (C * E - F * B) / (E * A - B * D);
-        const y = (C * A - F * D) / (B * A - D * E);
+        // Để code gọn, ta giả định p1 là gốc tạm thời (0,0,0) để tính, sau đó cộng lại.
+        // Tuy nhiên, để chính xác nhất mà không cần thư viện nặng, ta dùng xấp xỉ trọng số (Weighted Centroid)
+        // hoặc giải thuật toán Intersection of 3 Spheres.
         
-        if (isNaN(x) || isNaN(y)) return null;
-        return { x, y };
-    } catch { return null; }
+        // Dưới đây là cài đặt giải thuật toán gốc (Exact Solution):
+        // 1. Giải hệ phương trình 3 cầu p1, p2, p3
+        const ex = tempVec(p2, p1); // vector đơn vị p1->p2
+        const i = dot(ex, sub(p3, p1));
+        const ey = sub(sub(p3, p1), mul(ex, i));
+        const eyNorm = norm(ey);
+        // if (eyNorm == 0) return null; // p1, p2, p3 thẳng hàng -> Lỗi
+        const ey_unit = div(ey, eyNorm);
+        const ez = cross(ex, ey_unit);
+        
+        const d = norm(sub(p2, p1));
+        const j = dot(ey_unit, sub(p3, p1));
+        
+        const x = (r1*r1 - r2*r2 + d*d) / (2*d);
+        const y = ((r1*r1 - r3*r3 + i*i + j*j) / (2*j)) - ((i/j)*x);
+        
+        // z = +/- căn bậc 2
+        const zSq = r1*r1 - x*x - y*y;
+        if (zSq < 0) return null; // Không cắt nhau
+        const z = Math.sqrt(zSq);
+
+        // Ta có 2 kết quả: Res1 (z dương) và Res2 (z âm)
+        // Tọa độ cục bộ
+        const res1 = add(p1, add(mul(ex, x), add(mul(ey_unit, y), mul(ez, z))));
+        const res2 = add(p1, add(mul(ex, x), add(mul(ey_unit, y), mul(ez, -z))));
+
+        // 2. Dùng Anchor thứ 4 (p4, r4) để kiểm tra xem Res1 hay Res2 đúng
+        const dist1 = Math.abs(norm(sub(res1, p4)) - r4);
+        const dist2 = Math.abs(norm(sub(res2, p4)) - r4);
+
+        return dist1 < dist2 ? res1 : res2;
+
+    } catch (e) { return null; }
 }
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`🚀 Server đang chạy tại port ${PORT}`);
-});
+// Các hàm vector phụ trợ cho thuật toán trên
+function sub(a, b) { return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z }; }
+function add(a, b) { return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z }; }
+function mul(a, s) { return { x: a.x * s, y: a.y * s, z: a.z * s }; }
+function div(a, s) { return { x: a.x / s, y: a.y / s, z: a.z / s }; }
+function dot(a, b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+function norm(a) { return Math.sqrt(dot(a, a)); }
+function cross(a, b) {
+    return {
+        x: a.y * b.z - a.z * b.y,
+        y: a.z * b.x - a.x * b.z,
+        z: a.x * b.y - a.y * b.x
+    };
+}
+function tempVec(p2, p1) { // (p2-p1) / norm
+    const v = sub(p2, p1);
+    return div(v, norm(v));
+}
+
+const PORT = 3000;
+server.listen(PORT, () => console.log(`🚀 3D Server running on port ${PORT}`));
