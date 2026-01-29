@@ -2,79 +2,69 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hệ thống Định vị Kho</title>
-    <link rel="stylesheet" href="style.css">
+    <title>3D Warehouse Monitor</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: sans-serif; }
+        #controls {
+            position: absolute; top: 10px; left: 10px;
+            background: rgba(255,255,255,0.9); padding: 15px;
+            border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.2);
+            width: 250px; z-index: 100;
+        }
+        input, select, button { width: 100%; margin-bottom: 10px; padding: 5px; box-sizing: border-box; }
+        label { font-size: 12px; font-weight: bold; display: block; margin-bottom: 3px;}
+        h2 { margin-top: 0; font-size: 16px; text-align: center; }
+        #scene-container { width: 100vw; height: 100vh; background: #000; }
+        .coord-input { display: flex; gap: 5px; }
+        .coord-input input { width: 33%; }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
 </head>
 <body>
-    <header>
-        <h1>Hệ thống Định vị Kho (Indoor Positioning System)</h1>
-        <a href="/logout" id="logoutButton">Đăng xuất</a>
-    </header>
 
-    <main>
-        <div class="controls">
-            <h2>Bảng điều khiển</h2>
-            
-            <p>1. Tải lên bản đồ kho (.png/.jpg):</p>
-            <input type="file" id="mapUploader" accept="image/*">
-            
-            <div style="margin: 15px 0; padding: 10px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px;">
-                <label style="font-weight: bold; font-size: 14px; display: block; margin-bottom: 8px;">2. Kích thước thực tế (m):</label>
-                <div style="display: flex; gap: 5px; align-items: center;">
-                    <div style="flex: 1;">
-                        <input type="number" id="realWidthInput" placeholder="Rộng" step="0.1" style="width: 100%; padding: 5px;">
-                        <div style="font-size: 11px; color: #666; margin-top: 2px;">Rộng (X)</div>
-                    </div>
-                    <span style="font-weight: bold;">x</span>
-                    <div style="flex: 1;">
-                        <input type="number" id="realLengthInput" placeholder="Dài" step="0.1" style="width: 100%; padding: 5px;">
-                        <div style="font-size: 11px; color: #666; margin-top: 2px;">Dài (Y)</div>
-                    </div>
-                </div>
-                <button onclick="saveMapDimensions()" style="width: 100%; margin-top: 8px; background: #4CAF50; color: white; border: none; padding: 6px; cursor: pointer; border-radius: 3px;">Lưu Kích Thước</button>
-            </div>
-            
-            <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
-
-            <p id="instructions">
-                3. Nhấn "Sửa Vị trí Anchor" để đặt các trạm thu phát.
-            </p>
-            
-            <div style="display: flex; flex-direction: column; gap: 8px;">
-                <button id="resetButton">Đặt lại Anchors</button>
-                <button id="toggleAddAnchorModeButton">Sửa Vị trí Anchor</button>
-                <button id="toggleAddBayModeButton">Thêm/Sửa Ô Kho</button>
-            </div>
-            
-            <div id="anchorInfo" style="margin-top: 15px;">
-                <h3 id="anchorStatus" style="font-size: 14px;">Vị trí Anchor (pixel):</h3>
-            </div>
-        </div>
-
-        <div class="map-container">
-            <canvas id="warehouseCanvas"></canvas>
-            <div id="loadingText">Vui lòng tải lên bản đồ kho...</div>
-        </div>
-    </main>
-
-    <div style="position: absolute; top: 80px; right: 20px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); z-index: 1000; border: 1px solid #ddd; width: 200px;">
-        <h3 style="margin: 0 0 10px 0; font-size: 16px; color: #333; border-bottom: 1px solid #eee; padding-bottom: 5px;">
-            ⚙️ Cấu hình Độ cao
-        </h3>
+    <div id="controls">
+        <h2>🛠️ Cấu hình Kho 3D</h2>
         
-        <div style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
-            <label style="font-size: 14px;">Anchor:</label>
-            <div>
-                <input type="number" id="inpAnchorH" step="0.1" style="width: 60px; padding: 3px;"> <span style="font-size: 12px;">m</span>
-            </div>
-        </div>
-        
-        <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
-            <label style="font-size: 14px;">Tag:</label>
-            <div>
-                <input type="number" id="inpTagH" step="0.1" style="width: 60px; padding: 3px;"> <span style="font-size: 12px;">m</span>
-            </div>
+        <label>Kích thước (Dài x Rộng x Cao) mét:</label>
+        <div class="coord-input">
+            <input type="number" id="inpL" placeholder="Dài (x)" value="10">
+            <input type="number" id="inpW" placeholder="Rộng (y)" value="8">
+            <input type="number" id="inpH" placeholder="Cao (z)" value="4">
         </div>
 
-        <button onclick="saveHeightSettings()" style="width: 100%; background: #2196F3; color: white; border: none; padding: 8px; border-radius: 4px; cursor
+        <label>Gốc tọa độ (0,0,0) tại:</label>
+        <select id="originSelect">
+            <option value="bl_floor">Góc Trái - Dưới (Sàn)</option>
+            <option value="br_floor">Góc Phải - Dưới (Sàn)</option>
+            <option value="tl_floor">Góc Trái - Trên (Sàn)</option>
+            <option value="tr_floor">Góc Phải - Trên (Sàn)</option>
+        </select>
+        <button id="btnInitRoom">1. Tạo Không Gian 3D</button>
+        <hr>
+
+        <label>Thêm Anchor (x, y, z):</label>
+        <div class="coord-input">
+            <input type="number" id="ax" placeholder="x">
+            <input type="number" id="ay" placeholder="y">
+            <input type="number" id="az" placeholder="z">
+        </div>
+        <button id="btnAddAnchor">2. Thêm Anchor</button>
+        <button id="btnClearAnchors" style="background: #ff4444; color: white;">Xóa hết Anchor</button>
+        
+        <div id="status" style="font-size: 11px; margin-top:10px; color: blue;"></div>
+    </div>
+
+    <div id="scene-container"></div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    
+    <script type="module" src="client.js"></script>
+</body>
+</html>
