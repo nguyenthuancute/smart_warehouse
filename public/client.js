@@ -1,179 +1,199 @@
-// --- KHỞI TẠO BIẾN TOÀN CỤC ---
-// Lưu ý: 'socket' đã được khai báo ở bên index.html nên ta dùng trực tiếp
-const canvas = document.getElementById('warehouseCanvas');
-const ctx = canvas.getContext('2d');
-const mapUploader = document.getElementById('mapUploader');
-const loadingText = document.getElementById('loadingText');
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-// Các biến trạng thái
-let mapImage = new Image();
-let isMapLoaded = false;
-let anchors = [];
-let tags = {};
-let bays = [];
+const socket = io();
 
-// Chế độ chỉnh sửa
-let isAddingAnchorMode = false;
-let isAddingBayMode = false;
+// --- KHỞI TẠO SCENE THREE.JS ---
+const container = document.getElementById('scene-container');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a1a); // Màu nền tối
 
-// --- 1. XỬ LÝ TẢI BẢN ĐỒ (FIX LỖI CỦA BẠN) ---
-mapUploader.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            mapImage.src = event.target.result;
-            mapImage.onload = () => {
-                // Khi ảnh tải xong, chỉnh kích thước Canvas bằng kích thước ảnh
-                canvas.width = mapImage.width;
-                canvas.height = mapImage.height;
-                isMapLoaded = true;
-                loadingText.style.display = 'none'; // Ẩn chữ "Vui lòng tải..."
-                redrawCanvas(); // Vẽ lại ngay lập tức
-            }
-        };
-        reader.readAsDataURL(file);
-    }
-});
+// Camera
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(15, 15, 15); // Đặt góc nhìn chéo từ trên cao
 
-// --- 2. LẮNG NGHE SOCKET TỪ SERVER ---
-socket.on('anchors_updated', (data) => {
-    anchors = data;
-    redrawCanvas();
-});
+// Renderer
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+container.appendChild(renderer.domElement);
 
-socket.on('tags_update', (data) => {
-    tags = data;
-    redrawCanvas();
-});
+// Ánh sáng
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+scene.add(ambientLight);
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(10, 20, 10);
+scene.add(dirLight);
 
-socket.on('bays_updated', (data) => {
-    bays = data;
-    redrawCanvas();
-});
+// Controls (Dùng chuột xoay, zoom)
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
 
+// Grid nền (lưới)
+const gridHelper = new THREE.GridHelper(50, 50, 0x444444, 0x222222);
+scene.add(gridHelper);
 
-// --- 3. HÀM VẼ (RENDER LOOP) ---
-function redrawCanvas() {
-    if (!isMapLoaded) return;
+// Trục tọa độ (Đỏ=X, Xanh lá=Y, Xanh dương=Z)
+const axesHelper = new THREE.AxesHelper(2);
+scene.add(axesHelper);
 
-    // A. Xóa trắng & Vẽ bản đồ nền
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(mapImage, 0, 0);
+// --- QUẢN LÝ ĐỐI TƯỢNG ---
+let roomMesh = null;
+let anchorsMeshes = [];
+let tagMeshes = {};
+let anchorsData = []; // Lưu dữ liệu tọa độ
 
-    // B. Vẽ Ô Kho (Bays)
-    bays.forEach(bay => {
-        ctx.fillStyle = 'rgba(0, 255, 0, 0.3)'; // Màu xanh nhạt
-        ctx.strokeStyle = 'green';
-        ctx.fillRect(bay.x - 20, bay.y - 20, 40, 40); // Vẽ ô vuông 40x40
-        ctx.strokeRect(bay.x - 20, bay.y - 20, 40, 40);
+// --- 1. HÀM TẠO PHÒNG (HÌNH HỘP) ---
+function createRoom(length, width, height, originType) {
+    if (roomMesh) scene.remove(roomMesh);
+
+    // Hình học dây khung (Wireframe) cho dễ nhìn xuyên thấu
+    const geometry = new THREE.BoxGeometry(length, height, width); 
+    const edges = new THREE.EdgesGeometry(geometry);
+    roomMesh = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x00ff00 })); // Viền xanh lá
+
+    // Xử lý Gốc tọa độ (Dời hình hộp sao cho góc 0,0,0 nằm đúng chỗ user chọn)
+    // Three.js mặc định tâm hình hộp là (0,0,0). Ta phải dịch chuyển (translate).
+    // Mặc định ta coi trục Y là độ cao (Up). X là Dài, Z là Rộng.
+    
+    // Logic đơn giản: Ta giữ nguyên hệ trục tọa độ thế giới. Ta chỉ dời cái hộp đi chỗ khác.
+    // Ví dụ: Nếu chọn "Góc Trái - Dưới", tức là góc đó trùng với (0,0,0).
+    // Tâm hộp sẽ nằm tại (L/2, H/2, W/2).
+    
+    let xOff = length / 2;
+    let yOff = height / 2;
+    let zOff = width / 2;
+
+    // Tùy chỉnh theo select (Demo đơn giản cho 1 trường hợp chuẩn)
+    // Ta set mặc định góc (0,0,0) là góc sàn nhà.
+    roomMesh.position.set(xOff, yOff, zOff);
+
+    scene.add(roomMesh);
+    
+    // Gửi cấu hình lên server lưu
+    socket.emit('update_room_config', { length, width, height, originType });
+}
+
+// --- 2. XỬ LÝ ANCHOR (TRẠM THU PHÁT) ---
+function updateAnchorsDisplay(anchors) {
+    // Xóa cũ
+    anchorsMeshes.forEach(m => scene.remove(m));
+    anchorsMeshes = [];
+
+    anchors.forEach((anc, idx) => {
+        // Tạo khối cầu xanh dương đại diện Anchor
+        const geo = new THREE.SphereGeometry(0.3, 32, 32);
+        const mat = new THREE.MeshStandardMaterial({ color: 0x007bff, roughness: 0.1 });
+        const mesh = new THREE.Mesh(geo, mat);
         
-        ctx.fillStyle = 'black';
-        ctx.font = '10px Arial';
-        ctx.fillText("Bay " + bay.id, bay.x - 15, bay.y + 5);
+        mesh.position.set(anc.x, anc.z, anc.y); // LƯU Ý: ThreeJS dùng Y là cao, còn thực tế ta hay gọi Z là cao. 
+        // Tuy nhiên ở đây input user nhập: H là cao (Y trong ThreeJS). 
+        // Quy ước chuẩn ThreeJS: Y is Up. 
+        // Nếu user nhập: x(dài), y(rộng), z(cao).
+        // Thì map vào ThreeJS: position.set(x, z, y) -> Không, map là set(x, z, y) nếu y là rộng.
+        // Để thống nhất:
+        // Input User: X (Dài), Y (Rộng), Z (Cao).
+        // ThreeJS: X (Dài), Z (Rộng), Y (Cao).
+        mesh.position.set(anc.x, anc.z, anc.y); 
+
+        scene.add(mesh);
+        anchorsMeshes.push(mesh);
+        
+        // Vẽ Label (A1, A2...) - Phần này nâng cao, tạm thời bỏ qua hoặc log console
     });
+}
 
-    // C. Vẽ Anchors (Trạm thu phát)
-    anchors.forEach((anchor, index) => {
-        // Vẽ vòng tròn xanh dương
-        ctx.beginPath();
-        ctx.arc(anchor.x, anchor.y, 10, 0, 2 * Math.PI);
-        ctx.fillStyle = '#007bff';
-        ctx.fill();
-        ctx.strokeStyle = 'white';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        // Ghi tên Anchor
-        ctx.fillStyle = 'white';
-        ctx.font = 'bold 12px Arial';
-        ctx.fillText("A" + (index + 1), anchor.x - 8, anchor.y + 4);
-    });
-
-    // D. Vẽ Tags (Chấm đỏ di chuyển)
-    Object.keys(tags).forEach(tagId => {
-        const pos = tags[tagId];
-        if (pos) {
-            // Vẽ chấm đỏ
-            ctx.beginPath();
-            ctx.arc(pos.x, pos.y, 8, 0, 2 * Math.PI);
-            ctx.fillStyle = 'red';
-            ctx.fill();
-            
-            // Vẽ viền tỏa sáng
-            ctx.beginPath();
-            ctx.arc(pos.x, pos.y, 12, 0, 2 * Math.PI);
-            ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
-            ctx.stroke();
-
-            // Ghi tên Tag
-            ctx.fillStyle = 'black';
-            ctx.font = 'bold 12px Arial';
-            ctx.fillText(tagId.toUpperCase(), pos.x + 12, pos.y + 4);
+// --- 3. XỬ LÝ TAG (VẬT DI CHUYỂN) ---
+function updateTagsDisplay(tags) {
+    Object.keys(tags).forEach(id => {
+        const pos = tags[id];
+        
+        if (!tagMeshes[id]) {
+            // Tạo mới Tag màu đỏ
+            const geo = new THREE.SphereGeometry(0.2, 32, 32);
+            const mat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0x550000 });
+            const mesh = new THREE.Mesh(geo, mat);
+            scene.add(mesh);
+            tagMeshes[id] = mesh;
         }
+        
+        // Cập nhật vị trí
+        // Map tương tự Anchor: User(x,y,z) -> ThreeJS(x, z=cao, y=rộng) 
+        // Chỉnh lại map chuẩn: X=X, Y=Cao(ThreeJS), Z=Rộng(ThreeJS)
+        // Code Server trả về {x, y, z}. 
+        // Quy ước server: Z là độ cao.
+        // Quy ước ThreeJS: Y là độ cao.
+        tagMeshes[id].position.set(pos.x, pos.z, pos.y); 
     });
 }
 
 
-// --- 4. XỬ LÝ CLICK CHUỘT (THÊM ANCHOR/BAY) ---
-canvas.addEventListener('mousedown', (e) => {
-    // Lấy tọa độ chuột chuẩn trên Canvas
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
+// --- GIAO DIỆN & SỰ KIỆN ---
+
+// Nút Tạo phòng
+document.getElementById('btnInitRoom').addEventListener('click', () => {
+    const l = parseFloat(document.getElementById('inpL').value);
+    const w = parseFloat(document.getElementById('inpW').value);
+    const h = parseFloat(document.getElementById('inpH').value);
+    const origin = document.getElementById('originSelect').value;
+    createRoom(l, w, h, origin);
+});
+
+// Nút Thêm Anchor
+document.getElementById('btnAddAnchor').addEventListener('click', () => {
+    const x = parseFloat(document.getElementById('ax').value);
+    const y = parseFloat(document.getElementById('ay').value); // User nghĩ là rộng
+    const z = parseFloat(document.getElementById('az').value); // User nghĩ là cao
     
-    const clickX = (e.clientX - rect.left) * scaleX;
-    const clickY = (e.clientY - rect.top) * scaleY;
+    if (isNaN(x) || isNaN(y) || isNaN(z)) return alert("Nhập số hợp lệ!");
+    
+    // Lưu ý: Server đang xử lý theo logic toán học thuần túy (x,y,z).
+    // Ta cứ gửi đúng x,y,z lên server.
+    anchorsData.push({ id: anchorsData.length, x, y, z });
+    socket.emit('set_anchors', anchorsData);
+    
+    // Reset input
+    document.getElementById('ax').value = '';
+    document.getElementById('ay').value = '';
+    document.getElementById('az').value = '';
+});
 
-    // Mode 1: Thêm Anchor
-    if (isAddingAnchorMode) {
-        if (anchors.length >= 3) {
-            alert("Hệ thống hiện tại chỉ hỗ trợ tối đa 3 Anchors!");
-            return;
-        }
-        const newAnchor = { x: clickX, y: clickY };
-        anchors.push(newAnchor);
-        socket.emit('set_anchors', anchors); // Gửi về Server lưu
-        redrawCanvas();
-    }
-
-    // Mode 2: Thêm Ô Kho
-    if (isAddingBayMode) {
-        // Tự động tạo ID mới
-        const newId = bays.length > 0 ? Math.max(...bays.map(b => b.id)) + 1 : 1;
-        const newBay = {
-            id: newId,
-            x: clickX,
-            y: clickY,
-            tiers: [] 
-        };
-        bays.push(newBay);
-        socket.emit('set_bays_layout', bays); // Gửi về Server lưu
-        redrawCanvas();
-    }
+document.getElementById('btnClearAnchors').addEventListener('click', () => {
+    anchorsData = [];
+    socket.emit('set_anchors', []);
 });
 
 
-// --- 5. CÁC NÚT ĐIỀU KHIỂN ---
-// Nút Bật/Tắt chế độ sửa Anchor
-document.getElementById('toggleAddAnchorModeButton').addEventListener('click', () => {
-    isAddingAnchorMode = !isAddingAnchorMode;
-    isAddingBayMode = false; // Tắt chế độ kia đi
-    alert(isAddingAnchorMode ? "✏️ Đã BẬT chế độ đặt Anchor. Hãy click lên bản đồ!" : "Đã TẮT chế độ đặt Anchor.");
+// --- SOCKET LISTENERS ---
+socket.on('room_config_update', (cfg) => {
+    createRoom(cfg.length, cfg.width, cfg.height, cfg.originCorner);
+    // Điền lại vào input
+    document.getElementById('inpL').value = cfg.length;
+    document.getElementById('inpW').value = cfg.width;
+    document.getElementById('inpH').value = cfg.height;
 });
 
-// Nút Đặt lại (Xóa hết) Anchor
-document.getElementById('resetButton').addEventListener('click', () => {
-    if (confirm("Bạn có chắc muốn xóa hết Anchors không?")) {
-        anchors = [];
-        socket.emit('set_anchors', []);
-        redrawCanvas();
-    }
+socket.on('anchors_updated', (data) => {
+    anchorsData = data;
+    updateAnchorsDisplay(data);
+    document.getElementById('status').innerText = `Đã có ${data.length} Anchors. Cần tối thiểu 4.`;
 });
 
-// Nút Bật/Tắt chế độ sửa Ô Kho
-document.getElementById('toggleAddBayModeButton').addEventListener('click', () => {
-    isAddingBayMode = !isAddingBayMode;
-    isAddingAnchorMode = false;
-    alert(isAddingBayMode ? "📦 Đã BẬT chế độ thêm Ô kho. Hãy click lên bản đồ!" : "Đã TẮT chế độ thêm Ô kho.");
+socket.on('tags_update', (data) => {
+    updateTagsDisplay(data);
+});
+
+
+// --- ANIMATION LOOP (Vòng lặp vẽ hình) ---
+function animate() {
+    requestAnimationFrame(animate);
+    controls.update(); // Cần thiết cho damping
+    renderer.render(scene, camera);
+}
+animate();
+
+// Resize handler
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
 });
