@@ -46,8 +46,26 @@
             <option value="tl_floor">Góc Trái - Trên (Sàn)</option>
             <option value="tr_floor">Góc Phải - Trên (Sàn)</option>
         </select>
+        
         <button id="btnInitRoom">1. Tạo Không Gian 3D</button>
         <hr>
+
+        <label>Thêm Anchor (x, y, z):</label>
+        <div class="coord-input">
+            <input type="number" id="ax" placeholder="x">
+            <input type="number" id="ay" placeholder="y">
+            <input type="number" id="az" placeholder="z">
+        </div>
+        <button id="btnAddAnchor">2. Thêm Anchor</button>
+        
+        <div style="display: flex; gap: 5px; margin-top: 5px;">
+            <button id="btnHideAnchors" style="background: #4CAF50; color: white;">✅ Hoàn tất (Ẩn Anchor)</button>
+            <button id="btnShowAnchors" style="background: #FF9800; color: white; display: none;">👁️ Hiện lại</button>
+        </div>
+        <button id="btnClearAnchors" style="background: #ff4444; color: white; margin-top: 5px;">Xóa hết Anchor</button>
+        
+        <div id="status" style="font-size: 11px; margin-top:10px; color: blue;"></div>
+    </div>
 
         <label>Thêm Anchor (x, y, z):</label>
         <div class="coord-input">
