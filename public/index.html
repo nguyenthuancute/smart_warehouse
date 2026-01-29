@@ -2,22 +2,66 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>3D Warehouse Monitor</title>
     <style>
-        body { margin: 0; overflow: hidden; font-family: sans-serif; }
-        #controls {
-            position: absolute; top: 10px; left: 10px;
-            background: rgba(255,255,255,0.9); padding: 15px;
-            border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.2);
-            width: 250px; z-index: 100;
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
         }
-        input, select, button { width: 100%; margin-bottom: 10px; padding: 5px; box-sizing: border-box; }
-        label { font-size: 12px; font-weight: bold; display: block; margin-bottom: 3px;}
-        h2 { margin-top: 0; font-size: 16px; text-align: center; }
-        #scene-container { width: 100vw; height: 100vh; background: #000; }
-        .coord-input { display: flex; gap: 5px; }
-        .coord-input input { width: 33%; }
+        
+        /* Bảng điều khiển nằm gọn bên trái */
+        #controls {
+            position: absolute; 
+            top: 20px; 
+            left: 20px;
+            background: rgba(255, 255, 255, 0.95); 
+            padding: 20px;
+            border-radius: 12px; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            width: 280px; 
+            z-index: 100;
+            max-height: 90vh;
+            overflow-y: auto; /* Cho phép cuộn nếu màn hình bé */
+        }
+
+        /* Định dạng các phần tử bên trong Bảng điều khiển */
+        #controls h2 { margin-top: 0; font-size: 18px; text-align: center; color: #333; margin-bottom: 15px; }
+        #controls label { font-size: 13px; font-weight: 600; display: block; margin-bottom: 5px; color: #555; }
+        
+        /* Input và Select chỉ rộng 100% khi nằm trong controls */
+        #controls input, #controls select, #controls button { 
+            width: 100%; 
+            margin-bottom: 12px; 
+            padding: 8px; 
+            box-sizing: border-box; 
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        #controls button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+
+        #controls button:hover { background-color: #0056b3; }
+
+        #controls .coord-input { display: flex; gap: 8px; }
+        #controls .coord-input input { width: 33%; text-align: center; }
+
+        /* Màn hình 3D */
+        #scene-container { width: 100vw; height: 100vh; background: #1a1a1a; }
+        
+        /* Ẩn các phần tử thừa nếu lỡ tay copy paste sai */
+        body > input, body > button { display: none; }
     </style>
+    
     <script type="importmap">
         {
             "imports": {
@@ -34,9 +78,9 @@
         
         <label>Kích thước (Dài x Rộng x Cao) mét:</label>
         <div class="coord-input">
-            <input type="number" id="inpL" placeholder="Dài (x)" value="10">
-            <input type="number" id="inpW" placeholder="Rộng (y)" value="8">
-            <input type="number" id="inpH" placeholder="Cao (z)" value="4">
+            <input type="number" id="inpL" placeholder="Dài" value="10">
+            <input type="number" id="inpW" placeholder="Rộng" value="8">
+            <input type="number" id="inpH" placeholder="Cao" value="4">
         </div>
 
         <label>Gốc tọa độ (0,0,0) tại:</label>
@@ -48,7 +92,8 @@
         </select>
         
         <button id="btnInitRoom">1. Tạo Không Gian 3D</button>
-        <hr>
+        
+        <hr style="border: 0; border-top: 1px solid #ddd; margin: 15px 0;">
 
         <label>Thêm Anchor (x, y, z):</label>
         <div class="coord-input">
@@ -56,27 +101,16 @@
             <input type="number" id="ay" placeholder="y">
             <input type="number" id="az" placeholder="z">
         </div>
-        <button id="btnAddAnchor">2. Thêm Anchor</button>
+        <button id="btnAddAnchor" style="background-color: #28a745;">2. Thêm Anchor</button>
         
         <div style="display: flex; gap: 5px; margin-top: 5px;">
-            <button id="btnHideAnchors" style="background: #4CAF50; color: white;">✅ Hoàn tất (Ẩn Anchor)</button>
-            <button id="btnShowAnchors" style="background: #FF9800; color: white; display: none;">👁️ Hiện lại</button>
+            <button id="btnHideAnchors" style="background: #6c757d;">✅ Hoàn tất (Ẩn)</button>
+            <button id="btnShowAnchors" style="background: #ffc107; color: black; display: none;">👁️ Hiện lại</button>
         </div>
-        <button id="btnClearAnchors" style="background: #ff4444; color: white; margin-top: 5px;">Xóa hết Anchor</button>
         
-        <div id="status" style="font-size: 11px; margin-top:10px; color: blue;"></div>
-    </div>
-
-        <label>Thêm Anchor (x, y, z):</label>
-        <div class="coord-input">
-            <input type="number" id="ax" placeholder="x">
-            <input type="number" id="ay" placeholder="y">
-            <input type="number" id="az" placeholder="z">
-        </div>
-        <button id="btnAddAnchor">2. Thêm Anchor</button>
-        <button id="btnClearAnchors" style="background: #ff4444; color: white;">Xóa hết Anchor</button>
+        <button id="btnClearAnchors" style="background: #dc3545; margin-top: 5px;">Xóa hết Anchor</button>
         
-        <div id="status" style="font-size: 11px; margin-top:10px; color: blue;"></div>
+        <div id="status" style="font-size: 12px; margin-top:10px; color: #007bff; text-align: center;"></div>
     </div>
 
     <div id="scene-container"></div>
