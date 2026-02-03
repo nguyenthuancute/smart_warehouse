@@ -3,120 +3,125 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Warehouse Monitor</title>
+    <title>3D Warehouse Monitor - Bird's View</title>
     <style>
-        body { 
-            margin: 0; 
-            overflow: hidden; 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-        }
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         
-        /* Bảng điều khiển nằm gọn bên trái */
+        /* Bảng điều khiển mới */
         #controls {
-            position: absolute; 
-            top: 20px; 
-            left: 20px;
-            background: rgba(255, 255, 255, 0.95); 
-            padding: 20px;
-            border-radius: 12px; 
+            position: absolute; top: 20px; left: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px; border-radius: 12px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-            width: 280px; 
-            z-index: 100;
-            max-height: 90vh;
-            overflow-y: auto; /* Cho phép cuộn nếu màn hình bé */
+            width: 320px; z-index: 100;
+            max-height: 90vh; overflow-y: auto;
+            display: flex; flex-direction: column; gap: 15px; /* Khoảng cách giữa các phần */
         }
 
-        /* Định dạng các phần tử bên trong Bảng điều khiển */
-        #controls h2 { margin-top: 0; font-size: 18px; text-align: center; color: #333; margin-bottom: 15px; }
-        #controls label { font-size: 13px; font-weight: 600; display: block; margin-bottom: 5px; color: #555; }
-        
-        /* Input và Select chỉ rộng 100% khi nằm trong controls */
-        #controls input, #controls select, #controls button { 
-            width: 100%; 
-            margin-bottom: 12px; 
-            padding: 8px; 
-            box-sizing: border-box; 
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            font-size: 14px;
+        /* Tiêu đề chính */
+        #controls h2.main-title {
+            margin: 0; font-size: 20px; text-align: center; color: #333;
+            border-bottom: 2px solid #eee; padding-bottom: 10px;
         }
 
-        #controls button {
-            background-color: #007bff;
-            color: white;
-            border: none;
-            cursor: pointer;
-            font-weight: bold;
+        /* Các phần con (Section) */
+        .control-section {
+            border: 1px solid #eee; padding: 12px; border-radius: 8px; background: #fdfdfd;
+        }
+        .control-section h3 {
+            margin: 0 0 10px 0; font-size: 16px; color: #555; font-weight: 600;
+        }
+
+        /* Phần 2: Bản đồ thu nhỏ (Overview) */
+        #overview-map-container {
+            width: 100%; height: 180px;
+            background-color: #f0f0f0; border: 1px solid #ddd; border-radius: 4px;
+            display: flex; justify-content: center; align-items: center; overflow: hidden;
+        }
+        #overview-canvas { width: 100%; height: 100%; object-fit: contain; }
+
+        /* Phần 3: Bảng Tọa độ Tag */
+        #tag-positions-table {
+            width: 100%; border-collapse: collapse; font-size: 13px;
+        }
+        #tag-positions-table th, #tag-positions-table td {
+            border: 1px solid #ddd; padding: 6px; text-align: center;
+        }
+        #tag-positions-table th { background-color: #f2f2f2; font-weight: 600; }
+        .tag-row-empty { font-style: italic; color: #999; }
+
+        /* Phần 4: Nút Lịch sử di chuyển */
+        .history-controls {
+            display: flex; gap: 8px;
+        }
+        .history-controls button {
+            flex: 1; padding: 8px; cursor: pointer;
+            background-color: #007bff; color: white;
+            border: none; border-radius: 4px; font-size: 13px; font-weight: 500;
             transition: background 0.2s;
         }
-
-        #controls button:hover { background-color: #0056b3; }
-
-        #controls .coord-input { display: flex; gap: 8px; }
-        #controls .coord-input input { width: 33%; text-align: center; }
+        .history-controls button:hover { background-color: #0056b3; }
+        .history-controls button.btn-secondary { background-color: #6c757d; }
+        .history-controls button.btn-secondary:hover { background-color: #545b62; }
 
         /* Màn hình 3D */
         #scene-container { width: 100vw; height: 100vh; background: #1a1a1a; }
         
-        /* Ẩn các phần tử thừa nếu lỡ tay copy paste sai */
+        /* Ẩn các phần tử không cần thiết */
         body > input, body > button { display: none; }
     </style>
-    
     <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-            }
-        }
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
     </script>
 </head>
 <body>
 
     <div id="controls">
-        <h2>🛠️ Cấu hình Kho 3D</h2>
+        <h2 class="main-title">1. Chế độ xem (Bird's view 3D)</h2>
         
-        <label>Kích thước (Dài x Rộng x Cao) mét:</label>
-        <div class="coord-input">
-            <input type="number" id="inpL" placeholder="Dài" value="10">
-            <input type="number" id="inpW" placeholder="Rộng" value="8">
-            <input type="number" id="inpH" placeholder="Cao" value="4">
+        <div class="control-section">
+            <h3>2. Cấu hình kho (Overview)</h3>
+            <div id="overview-map-container">
+                <canvas id="overview-canvas" width="300" height="180"></canvas>
+            </div>
+            <div style="font-size: 12px; color: #666; margin-top: 5px; text-align: center;">
+                Mặt bằng kho (XZ) - Anchor: Xanh, Tag: Đỏ
+            </div>
         </div>
 
-        <label>Gốc tọa độ (0,0,0) tại:</label>
-        <select id="originSelect">
-            <option value="bl_floor">Góc Trái - Dưới (Sàn)</option>
-            <option value="br_floor">Góc Phải - Dưới (Sàn)</option>
-            <option value="tl_floor">Góc Trái - Trên (Sàn)</option>
-            <option value="tr_floor">Góc Phải - Trên (Sàn)</option>
-        </select>
-        
-        <button id="btnInitRoom">1. Tạo Không Gian 3D</button>
-        
-        <hr style="border: 0; border-top: 1px solid #ddd; margin: 15px 0;">
+        <div class="control-section">
+            <h3>3. Tọa độ Tag (Thời gian thực)</h3>
+            <div style="max-height: 150px; overflow-y: auto;">
+                <table id="tag-positions-table">
+                    <thead>
+                        <tr>
+                            <th>Tag ID</th>
+                            <th>X (m)</th>
+                            <th>Y (Cao)</th>
+                            <th>Z (m)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="tag-row-empty"><td colspan="4">Chưa có dữ liệu tag...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
 
-        <label>Thêm Anchor (x, y, z):</label>
-        <div class="coord-input">
-            <input type="number" id="ax" placeholder="x">
-            <input type="number" id="ay" placeholder="y">
-            <input type="number" id="az" placeholder="z">
-        </div>
-        <button id="btnAddAnchor" style="background-color: #28a745;">2. Thêm Anchor</button>
-        
-        <div style="display: flex; gap: 5px; margin-top: 5px;">
-            <button id="btnHideAnchors" style="background: #6c757d;">✅ Hoàn tất (Ẩn)</button>
-            <button id="btnShowAnchors" style="background: #ffc107; color: black; display: none;">👁️ Hiện lại</button>
+        <div class="control-section">
+            <h3>4. Lịch sử di chuyển</h3>
+            <div class="history-controls">
+                <button id="btn-history-start" class="btn-secondary">Bắt đầu ghi</button>
+                <button id="btn-history-end" class="btn-secondary">Kết thúc</button>
+                <button id="btn-history-replay">Xem lại</button>
+            </div>
         </div>
         
-        <button id="btnClearAnchors" style="background: #dc3545; margin-top: 5px;">Xóa hết Anchor</button>
-        
-        <div id="status" style="font-size: 12px; margin-top:10px; color: #007bff; text-align: center;"></div>
+        <div id="status" style="font-size: 12px; margin-top:5px; color: #007bff; text-align: center;"></div>
     </div>
-
-    <div id="scene-container"></div>
-
-    <script src="/socket.io/socket.io.js"></script>
     
+    <div id="scene-container"></div>
+    <script src="/socket.io/socket.io.js"></script>
     <script type="module" src="client.js"></script>
 </body>
 </html>
