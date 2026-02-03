@@ -219,4 +219,38 @@
         }
     </script>
 </body>
+    <div id="map-2d-container">
+        <canvas id="main-2d-canvas"></canvas>
+
+        <div id="controls-2d">
+            <button id="btn-2d-in" title="Phóng to">+</button>
+            <button id="btn-2d-reset" title="Mặc định">⟲</button>
+            <button id="btn-2d-out" title="Thu nhỏ">-</button>
+            <div style="font-size: 10px; margin-top: 5px; color: #555;">
+                * Lăn chuột: Zoom<br>
+                * Kéo chuột: Di chuyển
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* ... CSS cũ ... */
+
+        #controls-2d {
+            position: absolute; bottom: 20px; right: 20px;
+            display: flex; flex-direction: column; gap: 5px;
+            background: rgba(255,255,255,0.9);
+            padding: 10px; border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 10;
+        }
+        #controls-2d button {
+            width: 35px; height: 35px;
+            font-size: 18px; font-weight: bold;
+            cursor: pointer; border: 1px solid #ccc;
+            background: white; border-radius: 4px;
+            margin-bottom: 0; /* Override style cũ */
+        }
+        #controls-2d button:hover { background: #eee; }
+    </style>
 </html>
