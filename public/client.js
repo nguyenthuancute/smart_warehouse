@@ -85,100 +85,193 @@ function updateTags3D(tags) {
 
 // --- HÀM LOGIC 2D (MỚI) ---
 
+// --- BIẾN TRẠNG THÁI CHO 2D (ZOOM & PAN) ---
+let zoomLevel = 1.0;   // Mức zoom hiện tại (1.0 = mặc định)
+let panX = 0;          // Dịch chuyển ngang
+let panY = 0;          // Dịch chuyển dọc
+let isDragging = false;
+let startDragX = 0;
+let startDragY = 0;
+
+// --- HÀM LOGIC 2D (ĐÃ NÂNG CẤP) ---
+
 function resize2DCanvas() {
-    // Canvas 2D sẽ bằng kích thước màn hình
     canvas2d.width = window.innerWidth;
     canvas2d.height = window.innerHeight;
-    drawMain2DMap(); // Vẽ lại ngay khi resize
+    drawMain2DMap();
 }
 
 function drawMain2DMap() {
-    // Xóa trắng canvas
     const w = canvas2d.width;
     const h = canvas2d.height;
     ctx2d.clearRect(0, 0, w, h);
 
-    // Tính toán tỷ lệ vẽ (Scale) sao cho bản đồ nằm giữa màn hình
-    // Chừa lề mỗi bên 50px
+    // 1. Tính toán Tỷ lệ cơ bản (Base Scale) để vừa màn hình
     const padding = 100; 
     const availW = w - padding;
     const availH = h - padding;
 
-    // Logic 2D: Trục Ngang là Length (x), Trục Dọc là Width (y) (z trong data)
-    // Scale = Pixel / Mét
-    const scaleX = availW / roomConfig.length;
-    const scaleY = availH / roomConfig.width;
-    const scale = Math.min(scaleX, scaleY); // Lấy scale nhỏ hơn để vừa khít
+    // Scale cơ bản: Pixel / Mét
+    const baseScaleX = availW / roomConfig.length;
+    const baseScaleY = availH / roomConfig.width;
+    const baseScale = Math.min(baseScaleX, baseScaleY); 
 
-    // Tính toán tọa độ vẽ để căn giữa (Centering)
-    const drawW = roomConfig.length * scale;
-    const drawH = roomConfig.width * scale;
-    const offsetX = (w - drawW) / 2;
-    const offsetY = (h - drawH) / 2;
+    // 2. Tính toán Scale thực tế (Base * Zoom User)
+    const currentScale = baseScale * zoomLevel;
 
-    // 1. Vẽ Khung Phòng (Hình chữ nhật xanh lá)
+    // 3. Tính toán vị trí vẽ (Căn giữa + Pan User)
+    const drawW = roomConfig.length * currentScale;
+    const drawH = roomConfig.width * currentScale;
+    
+    // Tọa độ gốc (Top-Left) của hình chữ nhật kho
+    const offsetX = (w - drawW) / 2 + panX;
+    const offsetY = (h - drawH) / 2 + panY;
+
+    // --- BẮT ĐẦU VẼ ---
+    
+    ctx2d.save(); // Lưu trạng thái context
+
+    // Vẽ Khung Phòng (Xanh lá)
     ctx2d.strokeStyle = '#00cc00';
-    ctx2d.lineWidth = 3;
+    ctx2d.lineWidth = 2; // Độ dày nét không đổi theo zoom cho dễ nhìn
     ctx2d.strokeRect(offsetX, offsetY, drawW, drawH);
 
-    // Vẽ lưới sàn (tùy chọn cho đẹp)
-    ctx2d.strokeStyle = '#eee';
+    // Vẽ lưới sàn (Grid)
+    ctx2d.strokeStyle = '#e0e0e0';
     ctx2d.lineWidth = 1;
     ctx2d.beginPath();
     // Kẻ dọc
     for(let i=1; i<roomConfig.length; i++){
-        ctx2d.moveTo(offsetX + i*scale, offsetY);
-        ctx2d.lineTo(offsetX + i*scale, offsetY + drawH);
+        const x = offsetX + i * currentScale;
+        ctx2d.moveTo(x, offsetY);
+        ctx2d.lineTo(x, offsetY + drawH);
     }
     // Kẻ ngang
     for(let j=1; j<roomConfig.width; j++){
-        ctx2d.moveTo(offsetX, offsetY + j*scale);
-        ctx2d.lineTo(offsetX + drawW, offsetY + j*scale);
+        const y = offsetY + j * currentScale;
+        ctx2d.moveTo(offsetX, y);
+        ctx2d.lineTo(offsetX + drawW, y);
     }
     ctx2d.stroke();
 
-    // 2. Vẽ Anchor (Chấm xanh dương)
+    // Vẽ Anchor (Xanh dương)
     ctx2d.fillStyle = '#007bff';
     anchorsData.forEach(anc => {
-        // Data: x=Length, y=Height, z=Width
-        // 2D Map: X=x, Y=z
-        const px = offsetX + anc.x * scale;
-        const py = offsetY + anc.z * scale; // Lưu ý dùng Z làm trục dọc 2D
+        const px = offsetX + anc.x * currentScale;
+        const py = offsetY + anc.z * currentScale; // Z là trục dọc 2D
 
         ctx2d.beginPath();
-        ctx2d.arc(px, py, 6, 0, Math.PI * 2);
+        // Kích thước điểm vẽ cũng nên to lên chút khi zoom, nhưng không quá to
+        const radius = Math.max(4, 6 * zoomLevel); 
+        ctx2d.arc(px, py, radius, 0, Math.PI * 2);
         ctx2d.fill();
         
         // Label
-        ctx2d.fillStyle = '#000';
-        ctx2d.font = '12px Arial';
-        ctx2d.fillText(`A${anc.id !== undefined ? anc.id : ''}`, px + 8, py - 8);
-        ctx2d.fillStyle = '#007bff'; // Reset màu
+        if (zoomLevel > 0.5) { // Chỉ hiện chữ khi zoom đủ lớn
+            ctx2d.fillStyle = '#000';
+            ctx2d.font = `${12 * zoomLevel}px Arial`; // Chữ to theo zoom
+            ctx2d.fillText(`A${anc.id !== undefined ? anc.id : ''}`, px + radius + 2, py);
+            ctx2d.fillStyle = '#007bff';
+        }
     });
 
-    // 3. Vẽ Tag (Chấm đỏ)
+    // Vẽ Tag (Đỏ)
     ctx2d.fillStyle = '#ff0000';
     Object.keys(tagDataStore).forEach(id => {
         const pos = tagDataStore[id];
-        const px = offsetX + pos.x * scale;
-        const py = offsetY + pos.z * scale; // Lưu ý dùng Z làm trục dọc 2D
+        const px = offsetX + pos.x * currentScale;
+        const py = offsetY + pos.z * currentScale;
 
         ctx2d.beginPath();
-        ctx2d.arc(px, py, 8, 0, Math.PI * 2);
+        const radius = Math.max(5, 8 * zoomLevel);
+        ctx2d.arc(px, py, radius, 0, Math.PI * 2);
         ctx2d.fill();
 
         // Label Tag
-        ctx2d.fillStyle = '#000';
-        ctx2d.font = 'bold 12px Arial';
-        ctx2d.fillText(id, px + 10, py);
-        ctx2d.fillStyle = '#ff0000';
+        if (zoomLevel > 0.5) {
+            ctx2d.fillStyle = '#000';
+            ctx2d.font = `bold ${12 * zoomLevel}px Arial`;
+            ctx2d.fillText(id, px + radius + 2, py);
+            ctx2d.fillStyle = '#ff0000';
+        }
     });
 
-    // Chú thích
+    // Thông tin debug góc màn hình
     ctx2d.fillStyle = '#555';
-    ctx2d.font = '14px Arial';
-    ctx2d.fillText(`Quy mô kho: ${roomConfig.length}m x ${roomConfig.width}m`, offsetX, offsetY - 10);
+    ctx2d.font = '12px Arial';
+    ctx2d.fillText(`Zoom: ${Math.round(zoomLevel * 100)}%`, 10, h - 10);
+    
+    ctx2d.restore();
 }
+
+// --- XỬ LÝ SỰ KIỆN CHUỘT (ZOOM & PAN) ---
+
+// 1. Zoom bằng lăn chuột
+canvas2d.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const scaleAmount = 0.1;
+    
+    // Zoom in hay out
+    if (e.deltaY < 0) {
+        zoomLevel += scaleAmount;
+    } else {
+        zoomLevel = Math.max(0.1, zoomLevel - scaleAmount); // Không cho nhỏ hơn 0.1
+    }
+    
+    drawMain2DMap();
+});
+
+// 2. Kéo thả (Pan) - Bắt đầu kéo
+canvas2d.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    startDragX = e.clientX;
+    startDragY = e.clientY;
+    canvas2d.style.cursor = 'grabbing'; // Đổi con trỏ chuột
+});
+
+// 3. Kéo thả - Đang kéo
+canvas2d.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    
+    const dx = e.clientX - startDragX;
+    const dy = e.clientY - startDragY;
+    
+    panX += dx;
+    panY += dy;
+    
+    startDragX = e.clientX;
+    startDragY = e.clientY;
+    
+    drawMain2DMap();
+});
+
+// 4. Kéo thả - Kết thúc
+canvas2d.addEventListener('mouseup', () => {
+    isDragging = false;
+    canvas2d.style.cursor = 'default';
+});
+canvas2d.addEventListener('mouseleave', () => {
+    isDragging = false;
+    canvas2d.style.cursor = 'default';
+});
+
+// --- XỬ LÝ NÚT BẤM TRÊN MÀN HÌNH 2D ---
+document.getElementById('btn-2d-in').addEventListener('click', () => {
+    zoomLevel += 0.2;
+    drawMain2DMap();
+});
+
+document.getElementById('btn-2d-out').addEventListener('click', () => {
+    zoomLevel = Math.max(0.1, zoomLevel - 0.2);
+    drawMain2DMap();
+});
+
+document.getElementById('btn-2d-reset').addEventListener('click', () => {
+    zoomLevel = 1.0;
+    panX = 0;
+    panY = 0;
+    drawMain2DMap();
+});
 
 
 // --- UI UPDATES ---
