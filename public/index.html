@@ -3,56 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Warehouse Monitor</title>
+    <title>Smart Warehouse Monitor</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         
         /* BẢNG ĐIỀU KHIỂN CHÍNH */
         #controls {
             position: absolute; top: 20px; left: 20px;
-            background: transparent; /* Nền trong suốt để các ô tách rời nhau */
+            background: transparent;
             width: 340px; z-index: 100;
             max-height: 95vh; overflow-y: auto;
-            display: flex; flex-direction: column; gap: 10px; /* Khoảng cách giữa các ô */
+            display: flex; flex-direction: column; gap: 10px;
         }
 
-        /* --- STYLE CHO ACCORDION (CÁC Ô) --- */
+        /* STYLE ACCORDION */
         .acc-item {
             background: rgba(255, 255, 255, 0.95);
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            overflow: hidden; /* Để ẩn nội dung khi đóng */
+            overflow: hidden;
             transition: all 0.3s ease;
         }
-
-        /* Thanh tiêu đề (Luôn hiện) */
         .acc-header {
-            padding: 15px;
-            background: #f8f9fa;
-            cursor: pointer;
-            font-weight: 600;
-            font-size: 15px;
-            color: #333;
+            padding: 15px; background: #f8f9fa; cursor: pointer;
+            font-weight: 600; font-size: 15px; color: #333;
             display: flex; justify-content: space-between; align-items: center;
             border-bottom: 1px solid transparent;
         }
         .acc-header:hover { background: #e9ecef; }
         .acc-header::after { content: '▼'; font-size: 12px; color: #777; transition: transform 0.3s; }
-        
-        /* Khi ô đang mở */
-        .acc-item.active .acc-header {
-            border-bottom: 1px solid #eee;
-            background: #fff;
-            color: #007bff;
-        }
+        .acc-item.active .acc-header { border-bottom: 1px solid #eee; background: #fff; color: #007bff; }
         .acc-item.active .acc-header::after { transform: rotate(180deg); }
-
-        /* Nội dung bên trong (Mặc định ẩn) */
-        .acc-content {
-            display: none;
-            padding: 15px;
-            background: #fff;
-        }
+        .acc-content { display: none; padding: 15px; background: #fff; }
         .acc-item.active .acc-content { display: block; animation: slideDown 0.3s ease; }
 
         @keyframes slideDown {
@@ -60,7 +42,7 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* --- CÁC ELEMENT CON --- */
+        /* UI ELEMENTS */
         label { font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px; color: #555; }
         input, button { 
             width: 100%; margin-bottom: 10px; padding: 8px; 
@@ -70,26 +52,41 @@
         .row-inputs input { margin-bottom: 0; text-align: center; }
         
         button.btn-primary { background: #007bff; color: white; border: none; cursor: pointer; }
+        button.btn-outline { background: white; color: #333; border: 1px solid #ccc; cursor: pointer; }
+        button.btn-outline.active { background: #007bff; color: white; border-color: #007bff; }
+        
         button.btn-success { background: #28a745; color: white; border: none; cursor: pointer; }
         button.btn-danger { background: #dc3545; color: white; border: none; cursor: pointer; }
         button:hover { opacity: 0.9; }
 
-        /* Canvas Overview */
-        #overview-wrapper {
-            width: 100%; height: 160px;
-            background: #f0f0f0; border: 1px solid #ddd; border-radius: 4px;
-            display: flex; justify-content: center; align-items: center;
-            margin-bottom: 10px;
-        }
-        
         /* Bảng tọa độ */
         table { width: 100%; border-collapse: collapse; font-size: 13px; }
         th, td { border: 1px solid #eee; padding: 8px; text-align: center; }
         th { background: #f9f9f9; }
 
-        /* 3D Scene */
-        #scene-container { width: 100vw; height: 100vh; background: #1a1a1a; }
+        /* MÀN HÌNH HIỂN THỊ (VIEWPORTS) */
         
+        /* 1. Màn hình 3D (Mặc định) */
+        #scene-container { 
+            width: 100vw; height: 100vh; 
+            background: #1a1a1a; 
+            position: absolute; top: 0; left: 0; z-index: 0;
+        }
+
+        /* 2. Màn hình 2D (Mới - Ẩn mặc định) */
+        #map-2d-container {
+            width: 100vw; height: 100vh;
+            background: #f0f0f0; /* Nền xám sáng giống bản vẽ */
+            position: absolute; top: 0; left: 0; z-index: 0;
+            display: none; /* Ẩn đi */
+            justify-content: center;
+            align-items: center;
+        }
+        #main-2d-canvas {
+            background: white;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+
         /* Ẩn input rác */
         body > input, body > button { display: none; }
     </style>
@@ -101,31 +98,28 @@
 
     <div id="controls">
         
-        <div class="acc-item" id="item1">
-            <div class="acc-header" onclick="toggleAcc('item1')">1. Chế độ xem (Bird's view 3D)</div>
+        <div class="acc-item active" id="item1">
+            <div class="acc-header" onclick="toggleAcc('item1')">1. Chế độ xem</div>
             <div class="acc-content">
-                <p style="font-size: 13px; color: #666; margin-top:0;">Điều khiển Camera:</p>
+                <label>Chọn kiểu hiển thị:</label>
                 <div style="display: flex; gap: 5px;">
-                    <button class="btn-primary" id="btn-reset-cam">Góc nhìn mặc định</button>
-                    <button class="btn-primary" id="btn-top-view">Góc nhìn từ trên cao</button>
+                    <button class="btn-outline active" id="btn-mode-3d" onclick="switchMode('3d')">3D View</button>
+                    <button class="btn-outline" id="btn-mode-2d" onclick="switchMode('2d')">2D Map</button>
                 </div>
-                <div style="font-size: 11px; color: #888; margin-top: 5px;">
-                    * Giữ chuột trái: Xoay<br>
-                    * Giữ chuột phải: Di chuyển<br>
-                    * Lăn chuột: Zoom
+                
+                <div id="cam-controls-3d">
+                    <p style="font-size: 11px; color: #888; margin-bottom: 5px; margin-top: 10px;">Camera 3D:</p>
+                    <div style="display: flex; gap: 5px;">
+                        <button class="btn-primary" id="btn-reset-cam" style="font-size: 12px;">Mặc định</button>
+                        <button class="btn-primary" id="btn-top-view" style="font-size: 12px;">Từ trên cao</button>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div class="acc-item active" id="item2"> <div class="acc-header" onclick="toggleAcc('item2')">2. Cấu hình kho & Anchor</div>
+        <div class="acc-item" id="item2"> 
+            <div class="acc-header" onclick="toggleAcc('item2')">2. Cấu hình kho & Anchor</div>
             <div class="acc-content">
-                
-                <div id="overview-wrapper">
-                    <canvas id="overview-canvas" width="280" height="150"></canvas>
-                </div>
-
-                <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;">
-                
                 <label>A. Kích thước kho (m):</label>
                 <div class="row-inputs">
                     <input type="number" id="inpL" placeholder="Dài (x)">
@@ -151,19 +145,19 @@
         </div>
 
         <div class="acc-item" id="item3">
-            <div class="acc-header" onclick="toggleAcc('item3')">3. Tọa độ Tag (Thời gian thực)</div>
+            <div class="acc-header" onclick="toggleAcc('item3')">3. Tọa độ Tag (Real-time)</div>
             <div class="acc-content">
                 <table>
                     <thead>
                         <tr>
-                            <th>Tag ID</th>
-                            <th>X (m)</th>
-                            <th>Y (m)</th>
-                            <th>Z (Cao-m)</th>
+                            <th>ID</th>
+                            <th>X</th>
+                            <th>Y</th>
+                            <th>Z(Cao)</th>
                         </tr>
                     </thead>
                     <tbody id="tag-table-body">
-                        <tr><td colspan="4" style="color:#999;">Đang chờ dữ liệu...</td></tr>
+                        <tr><td colspan="4" style="color:#999;">Chờ dữ liệu...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -183,6 +177,11 @@
     </div>
     
     <div id="scene-container"></div>
+
+    <div id="map-2d-container">
+        <canvas id="main-2d-canvas"></canvas>
+    </div>
+
     <script src="/socket.io/socket.io.js"></script>
     <script type="module" src="client.js"></script>
 
@@ -190,9 +189,33 @@
         // Hàm đóng mở Accordion
         function toggleAcc(id) {
             const item = document.getElementById(id);
-            // Nếu muốn chỉ mở 1 cái tại 1 thời điểm thì bỏ comment dòng dưới:
-            // document.querySelectorAll('.acc-item').forEach(el => el.classList.remove('active'));
             item.classList.toggle('active');
+        }
+
+        // Hàm chuyển tab 3D / 2D
+        function switchMode(mode) {
+            const btn3d = document.getElementById('btn-mode-3d');
+            const btn2d = document.getElementById('btn-mode-2d');
+            const cont3d = document.getElementById('scene-container');
+            const cont2d = document.getElementById('map-2d-container');
+            const camControls = document.getElementById('cam-controls-3d');
+
+            if (mode === '3d') {
+                btn3d.classList.add('active');
+                btn2d.classList.remove('active');
+                cont3d.style.display = 'block';
+                cont2d.style.display = 'none';
+                camControls.style.display = 'block';
+            } else {
+                btn3d.classList.remove('active');
+                btn2d.classList.add('active');
+                cont3d.style.display = 'none';
+                cont2d.style.display = 'flex'; // Flex để căn giữa canvas
+                camControls.style.display = 'none';
+                
+                // Trigger event resize để vẽ lại 2D map cho chuẩn kích thước
+                window.dispatchEvent(new Event('resize'));
+            }
         }
     </script>
 </body>
