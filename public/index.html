@@ -3,71 +3,94 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Warehouse Monitor - Bird's View</title>
+    <title>3D Warehouse Monitor</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         
-        /* Bảng điều khiển mới */
+        /* BẢNG ĐIỀU KHIỂN CHÍNH */
         #controls {
             position: absolute; top: 20px; left: 20px;
+            background: transparent; /* Nền trong suốt để các ô tách rời nhau */
+            width: 340px; z-index: 100;
+            max-height: 95vh; overflow-y: auto;
+            display: flex; flex-direction: column; gap: 10px; /* Khoảng cách giữa các ô */
+        }
+
+        /* --- STYLE CHO ACCORDION (CÁC Ô) --- */
+        .acc-item {
             background: rgba(255, 255, 255, 0.95);
-            padding: 20px; border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-            width: 320px; z-index: 100;
-            max-height: 90vh; overflow-y: auto;
-            display: flex; flex-direction: column; gap: 15px; /* Khoảng cách giữa các phần */
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden; /* Để ẩn nội dung khi đóng */
+            transition: all 0.3s ease;
         }
 
-        /* Tiêu đề chính */
-        #controls h2.main-title {
-            margin: 0; font-size: 20px; text-align: center; color: #333;
-            border-bottom: 2px solid #eee; padding-bottom: 10px;
+        /* Thanh tiêu đề (Luôn hiện) */
+        .acc-header {
+            padding: 15px;
+            background: #f8f9fa;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 15px;
+            color: #333;
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid transparent;
+        }
+        .acc-header:hover { background: #e9ecef; }
+        .acc-header::after { content: '▼'; font-size: 12px; color: #777; transition: transform 0.3s; }
+        
+        /* Khi ô đang mở */
+        .acc-item.active .acc-header {
+            border-bottom: 1px solid #eee;
+            background: #fff;
+            color: #007bff;
+        }
+        .acc-item.active .acc-header::after { transform: rotate(180deg); }
+
+        /* Nội dung bên trong (Mặc định ẩn) */
+        .acc-content {
+            display: none;
+            padding: 15px;
+            background: #fff;
+        }
+        .acc-item.active .acc-content { display: block; animation: slideDown 0.3s ease; }
+
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
-        /* Các phần con (Section) */
-        .control-section {
-            border: 1px solid #eee; padding: 12px; border-radius: 8px; background: #fdfdfd;
+        /* --- CÁC ELEMENT CON --- */
+        label { font-size: 12px; font-weight: bold; display: block; margin-bottom: 5px; color: #555; }
+        input, button { 
+            width: 100%; margin-bottom: 10px; padding: 8px; 
+            box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px;
         }
-        .control-section h3 {
-            margin: 0 0 10px 0; font-size: 16px; color: #555; font-weight: 600;
-        }
+        .row-inputs { display: flex; gap: 5px; margin-bottom: 10px; }
+        .row-inputs input { margin-bottom: 0; text-align: center; }
+        
+        button.btn-primary { background: #007bff; color: white; border: none; cursor: pointer; }
+        button.btn-success { background: #28a745; color: white; border: none; cursor: pointer; }
+        button.btn-danger { background: #dc3545; color: white; border: none; cursor: pointer; }
+        button:hover { opacity: 0.9; }
 
-        /* Phần 2: Bản đồ thu nhỏ (Overview) */
-        #overview-map-container {
-            width: 100%; height: 180px;
-            background-color: #f0f0f0; border: 1px solid #ddd; border-radius: 4px;
-            display: flex; justify-content: center; align-items: center; overflow: hidden;
+        /* Canvas Overview */
+        #overview-wrapper {
+            width: 100%; height: 160px;
+            background: #f0f0f0; border: 1px solid #ddd; border-radius: 4px;
+            display: flex; justify-content: center; align-items: center;
+            margin-bottom: 10px;
         }
-        #overview-canvas { width: 100%; height: 100%; object-fit: contain; }
+        
+        /* Bảng tọa độ */
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { border: 1px solid #eee; padding: 8px; text-align: center; }
+        th { background: #f9f9f9; }
 
-        /* Phần 3: Bảng Tọa độ Tag */
-        #tag-positions-table {
-            width: 100%; border-collapse: collapse; font-size: 13px;
-        }
-        #tag-positions-table th, #tag-positions-table td {
-            border: 1px solid #ddd; padding: 6px; text-align: center;
-        }
-        #tag-positions-table th { background-color: #f2f2f2; font-weight: 600; }
-        .tag-row-empty { font-style: italic; color: #999; }
-
-        /* Phần 4: Nút Lịch sử di chuyển */
-        .history-controls {
-            display: flex; gap: 8px;
-        }
-        .history-controls button {
-            flex: 1; padding: 8px; cursor: pointer;
-            background-color: #007bff; color: white;
-            border: none; border-radius: 4px; font-size: 13px; font-weight: 500;
-            transition: background 0.2s;
-        }
-        .history-controls button:hover { background-color: #0056b3; }
-        .history-controls button.btn-secondary { background-color: #6c757d; }
-        .history-controls button.btn-secondary:hover { background-color: #545b62; }
-
-        /* Màn hình 3D */
+        /* 3D Scene */
         #scene-container { width: 100vw; height: 100vh; background: #1a1a1a; }
         
-        /* Ẩn các phần tử không cần thiết */
+        /* Ẩn input rác */
         body > input, body > button { display: none; }
     </style>
     <script type="importmap">
@@ -77,51 +100,100 @@
 <body>
 
     <div id="controls">
-        <h2 class="main-title">1. Chế độ xem (Bird's view 3D)</h2>
         
-        <div class="control-section">
-            <h3>2. Cấu hình kho (Overview)</h3>
-            <div id="overview-map-container">
-                <canvas id="overview-canvas" width="300" height="180"></canvas>
-            </div>
-            <div style="font-size: 12px; color: #666; margin-top: 5px; text-align: center;">
-                Mặt bằng kho (XZ) - Anchor: Xanh, Tag: Đỏ
+        <div class="acc-item" id="item1">
+            <div class="acc-header" onclick="toggleAcc('item1')">1. Chế độ xem (Bird's view 3D)</div>
+            <div class="acc-content">
+                <p style="font-size: 13px; color: #666; margin-top:0;">Điều khiển Camera:</p>
+                <div style="display: flex; gap: 5px;">
+                    <button class="btn-primary" id="btn-reset-cam">Góc nhìn mặc định</button>
+                    <button class="btn-primary" id="btn-top-view">Góc nhìn từ trên cao</button>
+                </div>
+                <div style="font-size: 11px; color: #888; margin-top: 5px;">
+                    * Giữ chuột trái: Xoay<br>
+                    * Giữ chuột phải: Di chuyển<br>
+                    * Lăn chuột: Zoom
+                </div>
             </div>
         </div>
 
-        <div class="control-section">
-            <h3>3. Tọa độ Tag (Thời gian thực)</h3>
-            <div style="max-height: 150px; overflow-y: auto;">
-                <table id="tag-positions-table">
+        <div class="acc-item active" id="item2"> <div class="acc-header" onclick="toggleAcc('item2')">2. Cấu hình kho & Anchor</div>
+            <div class="acc-content">
+                
+                <div id="overview-wrapper">
+                    <canvas id="overview-canvas" width="280" height="150"></canvas>
+                </div>
+
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;">
+                
+                <label>A. Kích thước kho (m):</label>
+                <div class="row-inputs">
+                    <input type="number" id="inpL" placeholder="Dài (x)">
+                    <input type="number" id="inpW" placeholder="Rộng (y)">
+                    <input type="number" id="inpH" placeholder="Cao (z)">
+                </div>
+                <button class="btn-primary" id="btn-update-room">Cập nhật Kích thước</button>
+
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;">
+
+                <label>B. Quản lý Anchor (m):</label>
+                <div class="row-inputs">
+                    <input type="number" id="ax" placeholder="x">
+                    <input type="number" id="ay" placeholder="y">
+                    <input type="number" id="az" placeholder="z">
+                </div>
+                <div style="display: flex; gap: 5px;">
+                    <button class="btn-success" id="btn-add-anchor">Thêm Anchor</button>
+                    <button class="btn-danger" id="btn-clear-anchors">Xóa Hết</button>
+                </div>
+                <div id="anchor-count" style="font-size: 12px; color: blue; margin-top: 5px; text-align: right;">Anchor: 0</div>
+            </div>
+        </div>
+
+        <div class="acc-item" id="item3">
+            <div class="acc-header" onclick="toggleAcc('item3')">3. Tọa độ Tag (Thời gian thực)</div>
+            <div class="acc-content">
+                <table>
                     <thead>
                         <tr>
                             <th>Tag ID</th>
                             <th>X (m)</th>
-                            <th>Y (Cao)</th>
-                            <th>Z (m)</th>
+                            <th>Y (m)</th>
+                            <th>Z (Cao-m)</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        <tr class="tag-row-empty"><td colspan="4">Chưa có dữ liệu tag...</td></tr>
+                    <tbody id="tag-table-body">
+                        <tr><td colspan="4" style="color:#999;">Đang chờ dữ liệu...</td></tr>
                     </tbody>
                 </table>
             </div>
         </div>
 
-        <div class="control-section">
-            <h3>4. Lịch sử di chuyển</h3>
-            <div class="history-controls">
-                <button id="btn-history-start" class="btn-secondary">Bắt đầu ghi</button>
-                <button id="btn-history-end" class="btn-secondary">Kết thúc</button>
-                <button id="btn-history-replay">Xem lại</button>
+        <div class="acc-item" id="item4">
+            <div class="acc-header" onclick="toggleAcc('item4')">4. Lịch sử di chuyển</div>
+            <div class="acc-content">
+                <div style="display: flex; gap: 5px;">
+                    <button class="btn-primary">Bắt đầu ghi</button>
+                    <button class="btn-danger">Kết thúc</button>
+                    <button class="btn-primary">Xem lại</button>
+                </div>
             </div>
         </div>
-        
-        <div id="status" style="font-size: 12px; margin-top:5px; color: #007bff; text-align: center;"></div>
+
     </div>
     
     <div id="scene-container"></div>
     <script src="/socket.io/socket.io.js"></script>
     <script type="module" src="client.js"></script>
+
+    <script>
+        // Hàm đóng mở Accordion
+        function toggleAcc(id) {
+            const item = document.getElementById(id);
+            // Nếu muốn chỉ mở 1 cái tại 1 thời điểm thì bỏ comment dòng dưới:
+            // document.querySelectorAll('.acc-item').forEach(el => el.classList.remove('active'));
+            item.classList.toggle('active');
+        }
+    </script>
 </body>
 </html>
