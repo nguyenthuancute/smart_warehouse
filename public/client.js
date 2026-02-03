@@ -3,13 +3,15 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const socket = io();
 
-// --- KHỞI TẠO SCENE ---
+// --- SETUP THREE.JS (Giữ nguyên) ---
 const container = document.getElementById('scene-container');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1a1a1a);
 
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(10, 10, 10);
+// Camera góc nhìn chim bay (Bird's eye view)
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(0, 20, 0); // Đặt camera ở trên cao
+camera.lookAt(0, 0, 0); // Nhìn xuống gốc tọa độ
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -23,87 +25,66 @@ scene.add(dirLight);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
+// controls.maxPolarAngle = Math.PI / 2; // Giới hạn không cho camera quay xuống dưới mặt sàn
 
 const gridHelper = new THREE.GridHelper(50, 50, 0x444444, 0x222222);
 scene.add(gridHelper);
-
 const axesHelper = new THREE.AxesHelper(2);
 scene.add(axesHelper);
 
-// --- QUẢN LÝ ĐỐI TƯỢNG ---
-let roomMesh = null;
-let tagMeshes = {};
-let anchorsData = [];
-
-// TẠO GROUP CHO ANCHOR (ĐỂ DỄ ẨN/HIỆN TOÀN BỘ)
 const anchorGroup = new THREE.Group();
 scene.add(anchorGroup);
+const tagGroup = new THREE.Group();
+scene.add(tagGroup);
 
-// 1. HÀM TẠO PHÒNG
+let roomMesh = null;
+let anchorsData = [];
+let tagMeshes = {};
+let tagPositionsData = {}; // Lưu dữ liệu vị trí tag
+let roomConfigData = null; // Lưu cấu hình phòng
+
+// --- SETUP OVERVIEW CANVAS (Bản đồ thu nhỏ) ---
+const overviewCanvas = document.getElementById('overview-canvas');
+const overviewCtx = overviewCanvas.getContext('2d');
+
+// --- HÀM XỬ LÝ 3D (Giữ nguyên logic) ---
+
 function createRoom(length, width, height, originType) {
     if (roomMesh) scene.remove(roomMesh);
-
     const geometry = new THREE.BoxGeometry(length, height, width);
     const edges = new THREE.EdgesGeometry(geometry);
     roomMesh = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x00ff00 }));
 
-    // Xử lý vị trí tương đối để gốc tọa độ nằm đúng góc sàn
-    // Mặc định BoxGeometry tâm ở (0,0,0).
-    // Y là chiều cao.
-    
-    let xPos = length / 2;
-    let yPos = height / 2;
-    let zPos = width / 2;
+    let xOff = length / 2;
+    let yOff = height / 2;
+    let zOff = width / 2;
 
-    // Logic đơn giản: Dịch chuyển cái hộp sao cho góc được chọn nằm tại (0,0,0) của thế giới
     switch (originType) {
-        case 'bl_floor': // Trái Dưới (Gốc mặc định hay dùng)
-            roomMesh.position.set(xPos, yPos, zPos);
-            break;
-        case 'br_floor': // Phải Dưới
-            roomMesh.position.set(-xPos, yPos, zPos);
-            break;
-        case 'tl_floor': // Trái Trên
-            roomMesh.position.set(xPos, yPos, -zPos);
-            break;
-        case 'tr_floor': // Phải Trên
-            roomMesh.position.set(-xPos, yPos, -zPos);
-            break;
-        default:
-            roomMesh.position.set(xPos, yPos, zPos);
+        case 'bl_floor': roomMesh.position.set(xOff, yOff, zOff); break;
+        case 'br_floor': roomMesh.position.set(-xOff, yOff, zOff); break;
+        case 'tl_floor': roomMesh.position.set(xOff, yOff, -zOff); break;
+        case 'tr_floor': roomMesh.position.set(-xOff, yOff, -zOff); break;
+        default: roomMesh.position.set(xOff, yOff, zOff);
     }
-
     scene.add(roomMesh);
-    socket.emit('update_room_config', { length, width, height, originType });
 }
 
-// 2. CẬP NHẬT ANCHOR (ĐÃ CHỈNH SỬA)
-function updateAnchorsDisplay(anchors) {
-    // Xóa hết các mesh con trong group
-    while(anchorGroup.children.length > 0){ 
-        anchorGroup.remove(anchorGroup.children[0]); 
-    }
-
-    anchors.forEach((anc, idx) => {
-        // --- CHỈNH SỬA: Bán kính nhỏ lại (0.08) ---
-        const geo = new THREE.SphereGeometry(0.08, 16, 16); 
-        const mat = new THREE.MeshStandardMaterial({ color: 0x007bff, roughness: 0.1 });
+function updateAnchors(anchors) {
+    while(anchorGroup.children.length > 0) anchorGroup.remove(anchorGroup.children[0]);
+    anchors.forEach(anc => {
+        const geo = new THREE.SphereGeometry(0.1, 16, 16);
+        const mat = new THREE.MeshStandardMaterial({ color: 0x007bff });
         const mesh = new THREE.Mesh(geo, mat);
-        
-        // Map tọa độ: User(x, y=rộng, z=cao) -> ThreeJS(x, z, y)
         mesh.position.set(anc.x, anc.z, anc.y); 
-
-        // Thêm vào Group thay vì thêm trực tiếp vào Scene
         anchorGroup.add(mesh);
     });
 }
 
-// 3. CẬP NHẬT TAG
-function updateTagsDisplay(tags) {
+function updateTags(tags) {
     Object.keys(tags).forEach(id => {
         const pos = tags[id];
         if (!tagMeshes[id]) {
-            const geo = new THREE.SphereGeometry(0.15, 32, 32); // Tag to hơn Anchor chút cho dễ nhìn
+            const geo = new THREE.SphereGeometry(0.15, 32, 32);
             const mat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0x550000 });
             const mesh = new THREE.Mesh(geo, mat);
             scene.add(mesh);
@@ -113,68 +94,106 @@ function updateTagsDisplay(tags) {
     });
 }
 
-// --- SỰ KIỆN NÚT BẤM ---
+// --- HÀM XỬ LÝ GIAO DIỆN MỚI ---
 
-document.getElementById('btnInitRoom').addEventListener('click', () => {
-    const l = parseFloat(document.getElementById('inpL').value);
-    const w = parseFloat(document.getElementById('inpW').value);
-    const h = parseFloat(document.getElementById('inpH').value);
-    const origin = document.getElementById('originSelect').value;
-    createRoom(l, w, h, origin);
-});
+// 1. Vẽ bản đồ thu nhỏ (Overview 2D - Mặt phẳng XZ)
+function drawOverviewMap() {
+    if (!roomConfigData) return;
+    const width = overviewCanvas.width;
+    const height = overviewCanvas.height;
+    overviewCtx.clearRect(0, 0, width, height);
 
-document.getElementById('btnAddAnchor').addEventListener('click', () => {
-    const x = parseFloat(document.getElementById('ax').value);
-    const y = parseFloat(document.getElementById('ay').value);
-    const z = parseFloat(document.getElementById('az').value);
+    // Tính tỷ lệ vẽ
+    const margin = 20;
+    const drawWidth = width - margin * 2;
+    const drawHeight = height - margin * 2;
     
-    if (isNaN(x) || isNaN(y) || isNaN(z)) return alert("Nhập số hợp lệ!");
-    
-    anchorsData.push({ id: anchorsData.length, x, y, z });
-    socket.emit('set_anchors', anchorsData);
-    
-    // Nếu đang ở chế độ ẩn thì hiện lại để người dùng thấy mình vừa thêm gì
-    anchorGroup.visible = true;
-    document.getElementById('btnShowAnchors').style.display = 'none';
-    document.getElementById('btnHideAnchors').style.display = 'inline-block';
-});
+    const scaleX = drawWidth / roomConfigData.length;
+    const scaleZ = drawHeight / roomConfigData.width;
+    const scale = Math.min(scaleX, scaleZ);
 
-// --- TÍNH NĂNG MỚI: ẨN/HIỆN ANCHOR ---
-document.getElementById('btnHideAnchors').addEventListener('click', () => {
-    anchorGroup.visible = false; // Ẩn cả nhóm
-    document.getElementById('btnHideAnchors').style.display = 'none';
-    document.getElementById('btnShowAnchors').style.display = 'inline-block';
-});
+    // Tọa độ bắt đầu vẽ (để căn giữa)
+    const startX = (width - roomConfigData.length * scale) / 2;
+    const startY = (height - roomConfigData.width * scale) / 2;
 
-document.getElementById('btnShowAnchors').addEventListener('click', () => {
-    anchorGroup.visible = true; // Hiện lại cả nhóm
-    document.getElementById('btnShowAnchors').style.display = 'none';
-    document.getElementById('btnHideAnchors').style.display = 'inline-block';
-});
+    // Vẽ khung kho
+    overviewCtx.strokeStyle = '#00ff00';
+    overviewCtx.lineWidth = 2;
+    overviewCtx.strokeRect(startX, startY, roomConfigData.length * scale, roomConfigData.width * scale);
 
-document.getElementById('btnClearAnchors').addEventListener('click', () => {
-    if(confirm("Xóa tất cả Anchor?")) {
-        anchorsData = [];
-        socket.emit('set_anchors', []);
+    // Vẽ Anchors (Xanh dương)
+    anchorsData.forEach(anc => {
+        const x = startX + anc.x * scale;
+        const y = startY + anc.z * scale; // Dùng Z cho trục dọc của bản đồ 2D
+        overviewCtx.fillStyle = '#007bff';
+        overviewCtx.beginPath();
+        overviewCtx.arc(x, y, 3, 0, Math.PI * 2);
+        overviewCtx.fill();
+    });
+
+    // Vẽ Tags (Đỏ)
+    Object.keys(tagPositionsData).forEach(id => {
+        const pos = tagPositionsData[id];
+        const x = startX + pos.x * scale;
+        const y = startY + pos.z * scale;
+        overviewCtx.fillStyle = '#ff0000';
+        overviewCtx.beginPath();
+        overviewCtx.arc(x, y, 4, 0, Math.PI * 2);
+        overviewCtx.fill();
+    });
+}
+
+// 2. Cập nhật bảng tọa độ Tag
+function updateTagTable(tags) {
+    const tbody = document.querySelector('#tag-positions-table tbody');
+    if (Object.keys(tags).length === 0) {
+        tbody.innerHTML = '<tr class="tag-row-empty"><td colspan="4">Chưa có dữ liệu tag...</td></tr>';
+        return;
     }
+    tbody.innerHTML = ''; // Xóa dữ liệu cũ
+    Object.keys(tags).forEach(id => {
+        const pos = tags[id];
+        const row = tbody.insertRow();
+        row.insertCell().textContent = id;
+        row.insertCell().textContent = pos.x.toFixed(2);
+        row.insertCell().textContent = pos.z.toFixed(2); // Z là độ cao (Y trong ThreeJS)
+        row.insertCell().textContent = pos.y.toFixed(2); // Y là chiều rộng (Z trong ThreeJS)
+    });
+}
+
+// --- SỰ KIỆN NÚT BẤM (LỊCH SỬ) ---
+document.getElementById('btn-history-start').addEventListener('click', () => {
+    alert("Chức năng 'Bắt đầu ghi' đang được phát triển!");
+});
+document.getElementById('btn-history-end').addEventListener('click', () => {
+    alert("Chức năng 'Kết thúc ghi' đang được phát triển!");
+});
+document.getElementById('btn-history-replay').addEventListener('click', () => {
+    alert("Chức năng 'Xem lại' đang được phát triển!");
 });
 
 // --- SOCKET LISTENERS ---
 socket.on('room_config_update', (cfg) => {
-    createRoom(cfg.length, cfg.width, cfg.height, cfg.originCorner);
+    roomConfigData = cfg;
+    createRoom(cfg.length, cfg.width, cfg.height, cfg.originType);
+    drawOverviewMap(); // Vẽ lại overview
 });
 
 socket.on('anchors_updated', (data) => {
     anchorsData = data;
-    updateAnchorsDisplay(data);
-    document.getElementById('status').innerText = `Anchor: ${data.length} (Cần >3)`;
+    updateAnchors(data);
+    drawOverviewMap(); // Vẽ lại overview
+    document.getElementById('status').innerText = `Anchor: ${data.length}`;
 });
 
 socket.on('tags_update', (data) => {
-    updateTagsDisplay(data);
+    tagPositionsData = data;
+    updateTags(data);
+    updateTagTable(data); // Cập nhật bảng
+    drawOverviewMap(); // Vẽ lại overview
 });
 
-// --- ANIMATION ---
+// --- LOOP ---
 function animate() {
     requestAnimationFrame(animate);
     controls.update();
