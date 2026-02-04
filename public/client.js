@@ -385,3 +385,45 @@ window.addEventListener('resize', () => {
 
 // Init 2D Size on load
 resize2DCanvas();
+// --- CÁC HÀM HỖ TRỢ HIỂN THỊ (Thêm mới) ---
+
+function showToast(message) {
+    const x = document.getElementById("toast-notification");
+    if(x) {
+        x.innerText = "🔔 " + message;
+        x.className = "show";
+        setTimeout(function(){ x.className = x.className.replace("show", ""); }, 3000);
+    }
+}
+
+let prevStations = {}; // Lưu trạng thái cũ để so sánh
+
+function updateDashboardUI(data) {
+    if (!data.distances) return;
+    
+    // Danh sách ID các trạm Base Station cần theo dõi
+    const stationIDs = ["0", "1", "2"]; 
+
+    stationIDs.forEach(id => {
+        const el = document.getElementById(`bs-${id}`);
+        if (el) {
+            if (data.distances.hasOwnProperty(id) && data.distances[id] !== null) {
+                // Cập nhật số liệu
+                const dist = parseFloat(data.distances[id]);
+                el.querySelector(".val").innerText = dist.toFixed(2) + "m";
+                
+                // Bật đèn xanh
+                el.classList.add("online");
+                
+                // Nếu trước đó chưa online -> Báo thông báo
+                if (!prevStations[id]) {
+                    showToast(`Kết nối lại Base Station ${id}`);
+                    prevStations[id] = true;
+                }
+            } else {
+                // Không có dữ liệu -> Mờ đi (tuỳ chọn)
+                // el.classList.remove("online");
+            }
+        }
+    });
+}
