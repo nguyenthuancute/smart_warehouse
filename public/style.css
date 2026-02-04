@@ -278,3 +278,69 @@ span.readonly[id$="_ro_status"] {
 #logoutButton:hover {
     background: #c9302c;
 }
+/* --- PHẦN THÊM CHO HUD HIỂN THỊ --- */
+#station-panel {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 220px;
+    background: rgba(0, 0, 0, 0.8);
+    color: #00ff00;
+    padding: 15px;
+    border: 1px solid #00ff00;
+    border-radius: 5px;
+    font-family: monospace;
+    z-index: 9999; /* Đảm bảo nổi trên mô hình 3D */
+}
+
+#station-panel h3 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    border-bottom: 1px solid #555;
+    padding-bottom: 5px;
+    text-align: center;
+    color: #fff;
+}
+
+.station-item {
+    margin-bottom: 8px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+}
+
+.dot {
+    height: 12px;
+    width: 12px;
+    background-color: #555; /* Màu xám khi mất sóng */
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 10px;
+    border: 1px solid #fff;
+}
+
+/* Khi có sóng thì đổi màu */
+.online .dot { background-color: #00ff00; box-shadow: 0 0 8px #00ff00; }
+.offline .dot { background-color: #ff0000; }
+
+#toast-notification {
+    visibility: hidden;
+    min-width: 250px;
+    background-color: #333;
+    color: #fff;
+    text-align: center;
+    border-left: 5px solid #00ff00;
+    padding: 16px;
+    position: fixed;
+    z-index: 10000;
+    left: 20px;
+    bottom: 30px;
+    opacity: 0;
+    transition: opacity 0.5s, bottom 0.5s;
+}
+
+#toast-notification.show {
+    visibility: visible;
+    opacity: 1;
+    bottom: 50px;
+}
