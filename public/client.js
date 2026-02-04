@@ -1,3 +1,4 @@
+
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
@@ -46,9 +47,6 @@ let tagMeshes = {}; // Dành cho 3D
 let tagDataStore = {}; // Lưu tọa độ tags để vẽ 2D
 let roomConfig = { length: 10, width: 8, height: 4 };
 
-// --- CÁC BIẾN HỖ TRỢ UI (HUD & TOAST) ---
-let prevStations = {}; // Lưu trạng thái kết nối cũ để so sánh
-
 // --- HÀM LOGIC 3D ---
 
 function createRoom3D(length, width, height) {
@@ -74,25 +72,19 @@ function updateAnchors3D(anchors) {
 
 function updateTags3D(tags) {
     Object.keys(tags).forEach(id => {
-        // Kiểm tra xem tags[id] có phải là object chứa tọa độ không
-        // (Phòng trường hợp data chứa cả phần distances nằm ngoài)
         const pos = tags[id];
-        
-        // Chỉ vẽ nếu có tọa độ x, y, z
-        if (pos && typeof pos.x === 'number') {
-            if (!tagMeshes[id]) {
-                const geo = new THREE.SphereGeometry(0.2, 32, 32);
-                const mat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-                const mesh = new THREE.Mesh(geo, mat);
-                scene.add(mesh);
-                tagMeshes[id] = mesh;
-            }
-            tagMeshes[id].position.set(pos.x, pos.z, pos.y);
+        if (!tagMeshes[id]) {
+            const geo = new THREE.SphereGeometry(0.2, 32, 32);
+            const mat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+            const mesh = new THREE.Mesh(geo, mat);
+            scene.add(mesh);
+            tagMeshes[id] = mesh;
         }
+        tagMeshes[id].position.set(pos.x, pos.z, pos.y);
     });
 }
 
-// --- HÀM LOGIC 2D ---
+// --- HÀM LOGIC 2D (MỚI) ---
 
 // --- BIẾN TRẠNG THÁI CHO 2D (ZOOM & PAN) ---
 let zoomLevel = 1.0;   // Mức zoom hiện tại (1.0 = mặc định)
@@ -101,6 +93,8 @@ let panY = 0;          // Dịch chuyển dọc
 let isDragging = false;
 let startDragX = 0;
 let startDragY = 0;
+
+// --- HÀM LOGIC 2D (ĐÃ NÂNG CẤP) ---
 
 function resize2DCanvas() {
     canvas2d.width = window.innerWidth;
@@ -186,23 +180,20 @@ function drawMain2DMap() {
     ctx2d.fillStyle = '#ff0000';
     Object.keys(tagDataStore).forEach(id => {
         const pos = tagDataStore[id];
-        // Kiểm tra tọa độ hợp lệ trước khi vẽ
-        if (pos && typeof pos.x === 'number') {
-            const px = offsetX + pos.x * currentScale;
-            const py = offsetY + pos.z * currentScale;
+        const px = offsetX + pos.x * currentScale;
+        const py = offsetY + pos.z * currentScale;
 
-            ctx2d.beginPath();
-            const radius = Math.max(5, 8 * zoomLevel);
-            ctx2d.arc(px, py, radius, 0, Math.PI * 2);
-            ctx2d.fill();
+        ctx2d.beginPath();
+        const radius = Math.max(5, 8 * zoomLevel);
+        ctx2d.arc(px, py, radius, 0, Math.PI * 2);
+        ctx2d.fill();
 
-            // Label Tag
-            if (zoomLevel > 0.5) {
-                ctx2d.fillStyle = '#000';
-                ctx2d.font = `bold ${12 * zoomLevel}px Arial`;
-                ctx2d.fillText(id, px + radius + 2, py);
-                ctx2d.fillStyle = '#ff0000';
-            }
+        // Label Tag
+        if (zoomLevel > 0.5) {
+            ctx2d.fillStyle = '#000';
+            ctx2d.font = `bold ${12 * zoomLevel}px Arial`;
+            ctx2d.fillText(id, px + radius + 2, py);
+            ctx2d.fillStyle = '#ff0000';
         }
     });
 
@@ -212,50 +203,6 @@ function drawMain2DMap() {
     ctx2d.fillText(`Zoom: ${Math.round(zoomLevel * 100)}%`, 10, h - 10);
     
     ctx2d.restore();
-}
-
-// --- HÀM HỖ TRỢ UI (HUD & TOAST) - MỚI THÊM ---
-
-function showToast(message) {
-    const x = document.getElementById("toast-notification");
-    if(x) {
-        x.innerText = "🔔 " + message;
-        x.className = "show";
-        // Tự tắt sau 3 giây
-        setTimeout(function(){ x.className = x.className.replace("show", ""); }, 3000);
-    }
-}
-
-function updateDashboardUI(data) {
-    // Nếu không có dữ liệu khoảng cách thì bỏ qua
-    if (!data || !data.distances) return;
-    
-    // Danh sách ID các trạm Base Station cần theo dõi
-    const stationIDs = ["0", "1", "2"]; 
-
-    stationIDs.forEach(id => {
-        const el = document.getElementById(`bs-${id}`);
-        if (el) {
-            if (data.distances.hasOwnProperty(id) && data.distances[id] !== null) {
-                // Cập nhật số liệu
-                const dist = parseFloat(data.distances[id]);
-                el.querySelector(".val").innerText = dist.toFixed(2) + "m";
-                
-                // Bật đèn xanh
-                el.classList.add("online");
-                
-                // Nếu trước đó chưa online -> Báo thông báo
-                if (!prevStations[id]) {
-                    showToast(`Kết nối lại Base Station ${id}`);
-                    prevStations[id] = true;
-                }
-            } else {
-                // Không có dữ liệu hoặc mất tín hiệu
-                // Có thể làm mờ hoặc đổi màu nếu muốn
-                // el.classList.remove("online");
-            }
-        }
-    });
 }
 
 // --- XỬ LÝ SỰ KIỆN CHUỘT (ZOOM & PAN) ---
@@ -323,3 +270,119 @@ document.getElementById('btn-2d-out').addEventListener('click', () => {
 document.getElementById('btn-2d-reset').addEventListener('click', () => {
     zoomLevel = 1.0;
     panX = 0;
+    panY = 0;
+    drawMain2DMap();
+});
+
+
+// --- UI UPDATES ---
+function updateTable(tags) {
+    const tbody = document.getElementById('tag-table-body');
+    if (Object.keys(tags).length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="color:#999;">Chờ dữ liệu...</td></tr>';
+        return;
+    }
+    tbody.innerHTML = '';
+    Object.keys(tags).forEach(id => {
+        const pos = tags[id];
+        // Hiển thị tọa độ theo logic người dùng: X, Y, Z (Cao)
+        const row = `<tr>
+            <td><b>${id}</b></td>
+            <td>${pos.x.toFixed(2)}</td>
+            <td>${pos.z.toFixed(2)}</td>
+            <td>${pos.y.toFixed(2)}</td>
+        </tr>`;
+        tbody.innerHTML += row;
+    });
+}
+
+
+// --- SỰ KIỆN NÚT BẤM ---
+document.getElementById('btn-update-room').addEventListener('click', () => {
+    const l = parseFloat(document.getElementById('inpL').value) || 10;
+    const w = parseFloat(document.getElementById('inpW').value) || 8;
+    const h = parseFloat(document.getElementById('inpH').value) || 4;
+    createRoom3D(l, w, h);
+    socket.emit('update_room_config', { length: l, width: w, height: h });
+    drawMain2DMap(); // Vẽ lại 2D nếu đang mở
+});
+
+document.getElementById('btn-add-anchor').addEventListener('click', () => {
+    const x = parseFloat(document.getElementById('ax').value);
+    const y = parseFloat(document.getElementById('ay').value);
+    const z = parseFloat(document.getElementById('az').value);
+    if (isNaN(x) || isNaN(y) || isNaN(z)) return alert("Nhập số hợp lệ!");
+    anchorsData.push({ id: anchorsData.length, x, y, z });
+    socket.emit('set_anchors', anchorsData);
+    document.getElementById('ax').value = '';
+    document.getElementById('ay').value = '';
+    document.getElementById('az').value = '';
+});
+
+document.getElementById('btn-clear-anchors').addEventListener('click', () => {
+    if (confirm("Xóa toàn bộ Anchor?")) {
+        anchorsData = [];
+        socket.emit('set_anchors', []);
+    }
+});
+
+document.getElementById('btn-reset-cam').addEventListener('click', () => {
+    controls.reset();
+    camera.position.set(15, 20, 15);
+    camera.lookAt(0,0,0);
+});
+document.getElementById('btn-top-view').addEventListener('click', () => {
+    camera.position.set(roomConfig.length/2, 25, roomConfig.width/2);
+    camera.lookAt(roomConfig.length/2, 0, roomConfig.width/2);
+});
+
+
+// --- SOCKET LISTENERS ---
+socket.on('room_config_update', (cfg) => {
+    roomConfig = cfg;
+    createRoom3D(cfg.length, cfg.width, cfg.height);
+    document.getElementById('inpL').value = cfg.length;
+    document.getElementById('inpW').value = cfg.width;
+    document.getElementById('inpH').value = cfg.height;
+    drawMain2DMap();
+});
+
+socket.on('anchors_updated', (data) => {
+    anchorsData = data;
+    updateAnchors3D(data);
+    document.getElementById('anchor-count').innerText = `Anchor: ${data.length}`;
+    drawMain2DMap();
+});
+
+socket.on('tags_update', (data) => {
+    tagDataStore = data; // Lưu dữ liệu để vẽ 2D
+    updateTags3D(data);
+    updateTable(data);
+    
+    // Nếu canvas 2D đang hiện (display != none) thì vẽ lại liên tục
+    if (canvas2d.offsetParent !== null) {
+        drawMain2DMap();
+    }
+});
+
+// --- ANIMATION LOOP ---
+function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+}
+animate();
+
+// Handle Resize
+window.addEventListener('resize', () => {
+    // Resize 3D
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    
+    // Resize 2D
+    resize2DCanvas();
+});
+
+// Init 2D Size on load
+resize2DCanvas();
