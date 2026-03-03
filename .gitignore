@@ -4,3 +4,4 @@ node_modules/
 # Bỏ qua các file log
 *.log
 npm-debug.log*
+.env
