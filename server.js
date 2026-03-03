@@ -4,7 +4,6 @@ const http = require('http');
 const { Server } = require("socket.io");
 const mqtt = require('mqtt');
 const bodyParser = require('body-parser');
-const { createClient } = require('@supabase/supabase-js');
 
 // --- CẤU HÌNH ---
 const app = express();
@@ -15,17 +14,11 @@ app.use(express.static('public'));
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// --- SUPABASE CLIENT ---
-const supabase = createClient(
-    process.env.VITE_SUPABASE_URL,
-    process.env.VITE_SUPABASE_ANON_KEY
-);
-
 // --- KALMAN FILTER CLASS ---
 class KalmanFilter {
     constructor() {
-        this.Q = 0.01;
-        this.R = 0.5;
+        this.Q = 0.005;
+        this.R = 0.8;
         this.P = { x: 1, y: 1, z: 1 };
         this.X = { x: 0, y: 0, z: 0 };
         this.K = { x: 0, y: 0, z: 0 };
@@ -134,14 +127,6 @@ client.on('message', async (topic, message) => {
             tagPositions[tagId] = { ...smoothedPos, accuracy };
 
             io.emit('tags_update', tagPositions);
-
-            supabase.from('tag_positions').insert({
-                tag_id: tagId,
-                x: smoothedPos.x,
-                y: smoothedPos.y,
-                z: smoothedPos.z,
-                accuracy: accuracy
-            }).then(() => {}).catch(() => {});
         }
     } catch (e) { console.error(e); }
 });
