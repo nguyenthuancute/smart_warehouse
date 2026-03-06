@@ -1,177 +1,90 @@
+
 <!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Warehouse Monitor</title>
-    <style>
-        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        #controls {
-            position: absolute; top: 10px; left: 10px;
-            width: 350px; z-index: 100;
-            max-height: calc(100vh - 20px); 
-            overflow-y: scroll; /* Always show scrollbar */
-            padding-right: 15px; /* Add space for scrollbar */
-        }
-        .acc-item {
-            background: rgba(255, 255, 255, 0.98);
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            overflow: hidden;
-            transition: all 0.3s ease;
-            margin-bottom: 10px;
-        }
-        .acc-header {
-            padding: 12px 15px; background: #f8f9fa; cursor: pointer;
-            font-weight: 600; font-size: 16px; color: #333;
-            display: flex; justify-content: space-between; align-items: center;
-            border-bottom: 1px solid transparent;
-        }
-        .acc-header:hover { background: #e9ecef; }
-        .acc-header::after { content: '▼'; font-size: 12px; color: #777; transition: transform 0.3s; }
-        .acc-item.active .acc-header { border-bottom: 1px solid #ddd; background: #fff; color: #007bff; }
-        .acc-item.active .acc-header::after { transform: rotate(180deg); }
-        .acc-content { display: none; padding: 15px; background: #fff; font-size: 14px; }
-        .acc-item.active .acc-content { display: block; animation: slideDown 0.3s ease; }
-
-        @keyframes slideDown {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        label { font-size: 13px; font-weight: 600; display: block; margin-bottom: 8px; color: #444; }
-        input, button { 
-            width: 100%; margin-bottom: 10px; padding: 10px; 
-            box-sizing: border-box; border: 1px solid #ccc; border-radius: 5px;
-            font-size: 14px;
-        }
-        .row-inputs { display: flex; gap: 8px; margin-bottom: 10px; }
-        .row-inputs input { margin-bottom: 0; text-align: center; }
-        
-        button { cursor: pointer; border: none; font-weight: 600; }
-        button.btn-primary { background: #007bff; color: white; }
-        button.btn-outline { background: white; color: #333; border: 1px solid #ccc; }
-        button.btn-outline.active { background: #007bff; color: white; border-color: #007bff; }
-        button.btn-success { background: #28a745; color: white; }
-        button.btn-danger { background: #dc3545; color: white; }
-        button:hover { opacity: 0.9; }
-
-        table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        th, td { border: 1px solid #eee; padding: 8px; text-align: center; }
-        th { background: #f9f9f9; font-weight: 600; }
-
-        #scene-container, #map-2d-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 0; }
-        #map-2d-container { background: #f0f0f0; display: none; justify-content: center; align-items: center; }
-        #main-2d-canvas { background: white; box-shadow: 0 0 20px rgba(0,0,0,0.1); }
-        
-        #axis-container {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            width: 100px;
-            height: 100px;
-            z-index: 101;
-        }
-
-        /* Anchor & Object Editor Styles */
-        .anchor-item, .object-item { display: flex; align-items: center; gap: 5px; margin-bottom: 8px; font-size: 13px; }
-        .anchor-id, .object-id { font-weight: bold; width: 30px; text-align: center; }
-        .anchor-item input, .object-item-details input { text-align: center; }
-        .btn-remove-anchor, .btn-remove-object { width: 40px !important; padding: 5px !important; margin: 0 !important; font-size: 16px; background: #ffc107; color: #333; }
-        .anchor-buttons { display: flex; gap: 10px; margin-top: 10px; }
-    </style>
+    <title>Indoor Positioning Dashboard</title>
+    <link rel="stylesheet" href="style.css">
     <script type="importmap">
         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
     </script>
 </head>
 <body>
-
-    <div id="controls">
-        <div class="acc-item active" id="item1">
-            <div class="acc-header" onclick="toggleAcc('item1')">1. Chế độ xem</div>
-            <div class="acc-content">
-                <div style="display: flex; gap: 5px;">
-                    <button class="btn-outline active" id="btn-mode-3d" onclick="switchMode('3d')">3D View</button>
-                    <button class="btn-outline" id="btn-mode-2d" onclick="switchMode('2d')">2D Map</button>
+    <div id="app-container">
+        <header id="app-header">
+            <h1>INDOOR POSITIONING DASHBOARD</h1>
+            <div class="header-controls">
+                 <button id="btn-settings" class="btn-mode">Cài đặt</button>
+                <div id="mode-switcher">
+                    <button class="btn-mode active" id="btn-mode-3d">3D</button>
+                    <button class="btn-mode" id="btn-mode-2d">2D</button>
                 </div>
             </div>
-        </div>
+        </header>
 
-        <div class="acc-item active" id="item2"> 
-            <div class="acc-header" onclick="toggleAcc('item2')">2. Cấu hình Kho</div>
-            <div class="acc-content">
-                <label>Kích thước kho (m):</label>
-                <div class="row-inputs">
-                    <input type="number" id="inpL" placeholder="Dài (x)">
-                    <input type="number" id="inpW" placeholder="Rộng (y)">
-                    <input type="number" id="inpH" placeholder="Cao (z)">
+        <main id="viewport">
+            <div id="floating-panel">
+                <div class="panel-header">
+                    <h3>Bảng điều khiển</h3>
+                    <button id="btn-close-panel">✕</button>
                 </div>
-                <button class="btn-primary" id="btn-update-room">Cập nhật K.Thước</button>
-                <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
+                <div class="panel-content">
+                    <div class="panel-section" id="config-section">
+                        <h2 class="collapsible">Cấu hình Kho</h2>
+                        <div class="collapsible-content">
+                            <div class="form-group">
+                                <label>Kích thước (D-R-C):</label>
+                                <div class="input-group">
+                                    <input type="number" id="inpL" placeholder="X">
+                                    <input type="number" id="inpW" placeholder="Y">
+                                    <input type="number" id="inpH" placeholder="Z">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
-                <label>Vị trí các Anchor (m):</label>
-                <div id="anchor-list-container">
-                    <div id="anchor-list"></div>
-                    <div class="anchor-buttons">
-                        <button id="btn-add-anchor" class="btn-success">Thêm Anchor</button>
-                        <button id="btn-save-anchors" class="btn-primary">Lưu Anchors</button>
+                    <div class="panel-section" id="anchors-section">
+                        <h2 class="collapsible">Quản lý Anchor</h2>
+                        <div class="collapsible-content">
+                            <div id="anchor-list"></div>
+                            <div class="button-group">
+                                <button id="btn-add-anchor" class="btn-secondary">Thêm</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="panel-section" id="objects-section">
+                        <h2 class="collapsible">Vật thể</h2>
+                        <div class="collapsible-content">
+                            <div id="object-list"></div>
+                             <div class="button-group">
+                                <button class="btn-secondary" id="btn-add-object">Thêm</button>
+                            </div>
+                        </div>
+                    </div>
+
+                     <div class="panel-section" id="tags-section">
+                        <h2 class="collapsible active">Tags Real-time</h2>
+                        <div class="collapsible-content" style="max-height: fit-content;">
+                            <div class="table-container">
+                                <table id="tag-table">
+                                    <thead><tr><th>ID</th><th>X</th><th>Y</th><th>Z</th><th>+/-</th></tr></thead>
+                                    <tbody id="tag-table-body"></tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
-
-                <label>Thêm Vật Thể (Chướng ngại vật):</label>
-                <div class="row-inputs">
-                    <input type="number" id="inp-obj-l" placeholder="Dài">
-                    <input type="number" id="inp-obj-w" placeholder="Rộng">
-                    <input type="number" id="inp-obj-h" placeholder="Cao">
-                </div>
-                 <div class="row-inputs">
-                    <input type="number" id="inp-obj-x" placeholder="Vị trí X">
-                    <input type="number" id="inp-obj-y" placeholder="Vị trí Y">
-                    <input type="number" id="inp-obj-z" placeholder="Vị trí Z">
-                </div>
-                <button class="btn-success" id="btn-add-object">Thêm Vật Thể</button>
-                <div id="object-list" style="margin-top: 15px;"></div>
             </div>
-        </div>
-
-        <div class="acc-item" id="item3">
-            <div class="acc-header" onclick="toggleAcc('item3')">3. Tọa độ Tags (Real-time)</div>
-            <div class="acc-content">
-                <table>
-                    <thead><tr><th>ID</th><th>X</th><th>Y</th><th>Z</th><th>Độ chính xác</th></tr></thead>
-                    <tbody id="tag-table-body">
-                        <tr><td colspan="5" style="color:#999;">Chờ dữ liệu...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-    
-    <div id="scene-container"></div>
-    <div id="axis-container"></div>
-    <div id="map-2d-container">
-        <canvas id="main-2d-canvas"></canvas>
+            
+            <div id="scene-container"></div>
+            <div id="map-2d-container"><canvas id="main-2d-canvas"></canvas></div>
+            <div id="axis-container"></div>
+        </main>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script type="module" src="client.js"></script>
-
-    <script>
-        function toggleAcc(id) {
-            document.getElementById(id).classList.toggle('active');
-        }
-        function switchMode(mode) {
-            const cont3d = document.getElementById('scene-container');
-            const cont2d = document.getElementById('map-2d-container');
-            const axisCont = document.getElementById('axis-container');
-            document.getElementById('btn-mode-3d').classList.toggle('active', mode === '3d');
-            document.getElementById('btn-mode-2d').classList.toggle('active', mode === '2d');
-            cont3d.style.display = (mode === '3d') ? 'block' : 'none';
-            axisCont.style.display = (mode === '3d') ? 'block' : 'none';
-            cont2d.style.display = (mode === '2d') ? 'flex' : 'none';
-            if (mode === '2d') window.dispatchEvent(new Event('resize'));
-        }
-    </script>
 </body>
 </html>
