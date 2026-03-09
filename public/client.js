@@ -1,7 +1,6 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { TransformControls } from 'three/addons/controls/TransformControls.js';
 
 const socket = io();
 
@@ -62,12 +61,8 @@ let roomConfig = { length: 10, width: 8, height: 4 };
 
 // --- OBJECT SELECTION & MANIPULATION ---
 let selectedObjects = [];
-let copiedObjectsData = [];
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
-const transformControls = new TransformControls(camera, renderer.domElement);
-transformControls.size = 0.6;
-scene.add(transformControls);
 
 function getObjectByMesh(mesh) {
     const index = objectGroup.children.indexOf(mesh);
@@ -91,47 +86,19 @@ function selectObject(mesh, additive = false) {
         mesh.material.color.set(0xaaaaaa);
         selectedObjects.splice(index, 1);
     }
-
-    if (selectedObjects.length === 1) {
-        transformControls.attach(selectedObjects[0]);
-    } else {
-        transformControls.detach();
-    }
 }
 
 function deselectAllObjects() {
-    selectedObjects.forEach(obj => obj.material.color.set(0xaaaaaa));
+    selectedObjects.forEach(obj => {
+        if(obj) obj.material.color.set(0xaaaaaa)
+    });
     selectedObjects = [];
-    transformControls.detach();
 }
 
 // --- Event Listeners for Controls and Selection ---
 
-// When dragging ends, update the data model
-transformControls.addEventListener('mouseUp', () => {
-    if (selectedObjects.length === 1) {
-        const selectedMesh = selectedObjects[0];
-        const objInfo = getObjectByMesh(selectedMesh);
-        if (objInfo) {
-            const { data } = objInfo;
-            const newPos = selectedMesh.position;
-            data.x = newPos.x;
-            data.y = newPos.z;
-            data.z = newPos.y;
-            renderObjectList(); // Update the UI panel
-        }
-    }
-});
-
-// Disable orbit controls while transforming
-transformControls.addEventListener('dragging-changed', (event) => {
-    controls.enabled = !event.value;
-});
-
 // Left-click to select
 container.addEventListener('click', (event) => {
-    if (transformControls.dragging) return;
-
     const rect = renderer.domElement.getBoundingClientRect();
     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
@@ -161,13 +128,6 @@ container.addEventListener('contextmenu', (event) => {
     raycaster.setFromCamera(mouse, camera);
     const intersects = raycaster.intersectObjects(objectGroup.children);
 
-    // If not clicking on any object, and no objects are selected, do nothing
-    if (intersects.length === 0 && selectedObjects.length === 0) {
-        contextMenu.style.display = 'none';
-        return;
-    }
-
-    // If clicking on an object that isn't currently selected, select it exclusively
     if (intersects.length > 0) {
         const clickedMesh = intersects[0].object;
         if (!selectedObjects.includes(clickedMesh)) {
@@ -182,41 +142,50 @@ container.addEventListener('contextmenu', (event) => {
 });
 
 // Hide context menu on left-click
-window.addEventListener('click', () => {
-    contextMenu.style.display = 'none';
-});
-
-document.getElementById('ctx-copy').addEventListener('click', () => {
-    if (selectedObjects.length > 0) {
-        copiedObjectsData = selectedObjects.map(mesh => {
-            const objInfo = getObjectByMesh(mesh);
-            return { ...objInfo.data };
-        });
-        console.log(`${copiedObjectsData.length} object(s) copied!`);
+window.addEventListener('click', (e) => {
+    if (!contextMenu.contains(e.target)) {
+        contextMenu.style.display = 'none';
     }
-    contextMenu.style.display = 'none';
 });
 
-document.getElementById('ctx-paste').addEventListener('click', () => {
-    if (copiedObjectsData.length > 0) {
-        copiedObjectsData.forEach(data => {
-            const newObject = { ...data };
-            newObject.x += 0.5; // Offset pasted object slightly
-            newObject.y += 0.5;
-            objectsData.push(newObject);
+document.getElementById('ctx-duplicate').addEventListener('click', () => {
+    if (selectedObjects.length > 0) {
+        selectedObjects.forEach(mesh => {
+            const objInfo = getObjectByMesh(mesh);
+            if (objInfo) {
+                 const newObject = { ...objInfo.data };
+                newObject.x += 0.5; // Offset pasted object slightly
+                newObject.y += 0.5;
+                objectsData.push(newObject);
+            }
         });
         renderObjectList();
         updateObjects3D();
-        console.log(`${copiedObjectsData.length} object(s) pasted!`);
     }
     contextMenu.style.display = 'none';
 });
 
-document.getElementById('ctx-group').addEventListener('click', () => {
-    // Grouping logic to be implemented
-    console.log('Grouping functionality to be added.');
+document.getElementById('ctx-delete').addEventListener('click', () => {
+    if (selectedObjects.length > 0) {
+        const idsToDelete = selectedObjects.map(mesh => {
+            const objInfo = getObjectByMesh(mesh);
+            return objInfo ? objInfo.index : -1;
+        }).filter(index => index !== -1);
+
+        // Sort indices in descending order to avoid messing up subsequent indices when splicing
+        idsToDelete.sort((a, b) => b - a);
+
+        idsToDelete.forEach(index => {
+            objectsData.splice(index, 1);
+        });
+
+        deselectAllObjects();
+        renderObjectList();
+        updateObjects3D();
+    }
     contextMenu.style.display = 'none';
 });
+
 
 // --- 3D LOGIC ---
 function createRoom3D(length, width, height) {
@@ -342,6 +311,72 @@ function updateCameraMovement() {
     }
 }
 
+function updateObjectMovement() {
+    if (selectedObjects.length === 0) return;
+
+    const moveSpeed = 2.0; // Units per second
+    const delta = 0.016; // assume 60fps for now
+
+    const moveDistance = moveSpeed * delta;
+
+    let moveX = 0;
+    let moveY = 0;
+    let moveZ = 0;
+
+    if (keyStates['arrowup']) {
+        moveZ = -moveDistance;
+    }
+    if (keyStates['arrowdown']) {
+        moveZ = moveDistance;
+    }
+    if (keyStates['arrowleft']) {
+        moveX = -moveDistance;
+    }
+    if (keyStates['arrowright']) {
+        moveX = moveDistance;
+    }
+    if (keyStates['pageup']) {
+        moveY = moveDistance;
+    }
+    if (keyStates['pagedown']) {
+        moveY = -moveDistance;
+    }
+
+    if (moveX !== 0 || moveY !== 0 || moveZ !== 0) {
+        selectedObjects.forEach(mesh => {
+            const objInfo = getObjectByMesh(mesh);
+            if (!objInfo) return;
+
+            const { data } = objInfo;
+            const halfL = data.l / 2;
+            const halfW = data.w / 2;
+            const halfH = data.h / 2;
+
+            // Calculate new position
+            let newX = mesh.position.x + moveX;
+            let newY = mesh.position.y + moveY;
+            let newZ = mesh.position.z + moveZ;
+
+            // Clamp position within room boundaries
+            newX = Math.max(halfL, Math.min(newX, roomConfig.length - halfL));
+            newZ = Math.max(halfW, Math.min(newZ, roomConfig.width - halfW));
+            newY = Math.max(halfH, Math.min(newY, roomConfig.height - halfH));
+
+            // Apply the clamped position
+            mesh.position.set(newX, newY, newZ);
+
+
+            // Update the underlying data
+            const newPos = mesh.position;
+            data.x = newPos.x;
+            data.y = newPos.z;
+            data.z = newPos.y;
+        });
+        renderObjectList(); // Update the UI panel
+    }
+}
+
+
 // --- UI & EVENT LISTENERS ---
 function updateCollapsibleHeight(content) {
     if (content && content.style.maxHeight && content.style.maxHeight !== '0px' && content.style.maxHeight !== 'fit-content') {
@@ -420,7 +455,10 @@ function renderObjectList() {
         item.innerHTML = `
             <div class="object-header">
                 <span class="object-id">OBJ ${index + 1}</span>
-                <button class="btn-remove-object" data-index="${index}">X</button>
+                <div>
+                    <button class="btn-duplicate-object" data-index="${index}">Dup</button>
+                    <button class="btn-remove-object" data-index="${index}">Del</button>
+                </div>
             </div>
             <div class="object-props">
                 <div class="prop-group">
@@ -446,6 +484,21 @@ function renderObjectList() {
             objectsData.splice(index, 1);
             renderObjectList();
             updateObjects3D();
+        });
+    });
+
+    document.querySelectorAll('.btn-duplicate-object').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const index = parseInt(e.target.dataset.index);
+            const originalObject = objectsData[index];
+            if (originalObject) {
+                const newObject = { ...originalObject };
+                newObject.x += 0.5; // Offset duplicated object slightly
+                newObject.y += 0.5;
+                objectsData.push(newObject);
+                renderObjectList();
+                updateObjects3D();
+            }
         });
     });
 
@@ -511,6 +564,7 @@ socket.on('tags_update', (data) => {
 function animate() {
     requestAnimationFrame(animate);
     updateCameraMovement();
+    updateObjectMovement();
     interpolateTagPositions();
     controls.update();
     renderer.render(scene, camera);

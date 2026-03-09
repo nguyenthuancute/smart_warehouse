@@ -15,7 +15,7 @@ app.use(express.static('public'));
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// --- KALMAN FILTER CLASS (IMPROVED FOR PER-AXIS TUNING) ---
+// --- KALMAN FILTER CLASS ---
 class KalmanFilter {
     constructor({ Q = {x: 0.005, y: 0.005, z: 0.005}, R = {x: 0.8, y: 0.8, z: 0.8} } = {}) {
         this.Q = Q; // Process noise covariance
@@ -34,11 +34,8 @@ class KalmanFilter {
 
         ['x', 'y', 'z'].forEach(axis => {
             if (measurement[axis] === undefined) return;
-            // Prediction
             const P_pred = this.P[axis] + this.Q[axis];
-            // Kalman Gain
             const K = P_pred / (P_pred + this.R[axis]);
-            // Update
             this.X[axis] = this.X[axis] + K * (measurement[axis] - this.X[axis]);
             this.P[axis] = (1 - K) * P_pred;
         });
@@ -107,20 +104,19 @@ client.on('message', async (topic, message) => {
 
         if (distArray.length < 3) return;
 
-        const rawPos = weightedCentroidTrilateration(distArray);
+        const rawPos = calculateTagPosition(distArray, roomConfig);
 
         if (rawPos && isValidPosition(rawPos)) {
             if (!kalmanFilters[tagId]) {
                  kalmanFilters[tagId] = new KalmanFilter({
-                    Q: { x: 0.005, y: 0.005, z: 0.001 }, // Lower Q for Z-axis for smoother results
-                    R: { x: 0.8, y: 0.8, z: 1.2 }       // Higher R for Z-axis as we trust it less
+                    Q: { x: 0.005, y: 0.005, z: 0.001 }, 
+                    R: { x: 0.8, y: 0.8, z: 1.2 }       
                 });
             }
 
             const smoothedPos = kalmanFilters[tagId].filter(rawPos);
             const accuracy = calculateAccuracy(distArray, smoothedPos);
             
-            // Chỉ cập nhật vị trí trong bộ nhớ
             tagPositions[tagId] = { ...smoothedPos, accuracy };
         }
     } catch (e) { console.error('MQTT Message Error:', e); }
@@ -135,41 +131,74 @@ setInterval(() => {
 }, UPDATE_INTERVAL);
 
 
-// --- THUẬT TOÁN ĐỊNH VỊ (WEIGHTED CENTROID) ---
-function weightedCentroidTrilateration(distArray) {
-    let totalWeight = 0;
-    let weightedPos = { x: 0, y: 0, z: 0 };
-    let validDistances = 0;
+// --- THUẬT TOÁN ĐỊNH VỊ ---
+function calculateTagPosition(distArray, roomConfig) {
+    // --- Step 1: Calculate 2D position (X, Y) using weighted centroid ---
+    let totalWeightXY = 0;
+    let weightedPosX = 0;
+    let weightedPosY = 0;
 
     distArray.forEach(({ anchor, distance }) => {
-        // Trọng số nghịch đảo với khoảng cách. Thêm 1 epsilon nhỏ để tránh chia cho 0.
         const weight = 1.0 / (distance + 0.001);
-        
-        weightedPos.x += anchor.x * weight;
-        weightedPos.y += anchor.y * weight;
-        weightedPos.z += anchor.z * weight;
-        totalWeight += weight;
-        validDistances++;
+        weightedPosX += anchor.x * weight;
+        weightedPosY += anchor.y * weight;
+        totalWeightXY += weight;
     });
 
-    if (totalWeight === 0 || validDistances < 3) {
-        return null; // Không đủ dữ liệu để tính toán
-    }
+    if (totalWeightXY === 0) return null;
 
-    weightedPos.x /= totalWeight;
-    weightedPos.y /= totalWeight;
-    weightedPos.z /= totalWeight;
+    const posX = weightedPosX / totalWeightXY;
+    const posY = weightedPosY / totalWeightXY;
 
-    return weightedPos;
+    // --- Step 2: Calculate Z for each anchor and get a weighted average ---
+    let zEstimations = [];
+    distArray.forEach(({ anchor, distance }) => {
+        const horizontalDistSq = Math.pow(posX - anchor.x, 2) + Math.pow(posY - anchor.y, 2);
+        const distSq = Math.pow(distance, 2);
+
+        if (distSq > horizontalDistSq) {
+            const zDiff = Math.sqrt(distSq - horizontalDistSq);
+            const z1 = anchor.z - zDiff; // Solution assuming tag is below anchor
+            const z2 = anchor.z + zDiff; // Solution assuming tag is above anchor
+
+            // Heuristic: Choose the Z value that is within the room's height boundaries.
+            // This is crucial if anchors are placed at various heights.
+            const z1_in_bounds = z1 >= 0 && z1 <= roomConfig.height;
+            const z2_in_bounds = z2 >= 0 && z2 <= roomConfig.height;
+
+            let estimatedZ = z1; // Default to the 'below' solution
+            if (z1_in_bounds && !z2_in_bounds) {
+                estimatedZ = z1;
+            } else if (!z1_in_bounds && z2_in_bounds) {
+                estimatedZ = z2;
+            }
+
+            // Weight for Z is higher for anchors more directly above/below the tag
+            const weightZ = 1.0 / (Math.sqrt(horizontalDistSq) + 0.01);
+            zEstimations.push({ z: estimatedZ, weight: weightZ });
+        }
+    });
+
+    if (zEstimations.length === 0) return null; // Cannot determine Z
+
+    // --- Step 3: Weighted average of Z estimations ---
+    let totalWeightZ = 0;
+    let weightedPosZ = 0;
+    zEstimations.forEach(({ z, weight }) => {
+        weightedPosZ += z * weight;
+        totalWeightZ += weight;
+    });
+
+    const posZ = weightedPosZ / totalWeightZ;
+
+    return { x: posX, y: posY, z: posZ };
 }
-
 
 function isValidPosition(pos) {
     if (!pos || isNaN(pos.x) || isNaN(pos.y) || isNaN(pos.z)) return false;
-    // Tăng vùng đệm để chấp nhận vị trí hơi lệch ra ngoài
     const buffer = 2; 
     if (pos.x < -buffer || pos.x > roomConfig.length + buffer) return false;
-    if (pos.y < -buffer || pos.y > roomConfig.width + buffer) return false; // Sửa lại thành width
+    if (pos.y < -buffer || pos.y > roomConfig.width + buffer) return false; 
     if (pos.z < -buffer || pos.z > roomConfig.height + buffer) return false;
     return true;
 }
