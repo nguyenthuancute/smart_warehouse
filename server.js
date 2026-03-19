@@ -69,15 +69,21 @@ io.on('connection', (socket) => {
 });
 
 // --- MQTT ---
-const MQTT_HOST = '127.0.0.1';
-const MQTT_PORT = 1883;
+const MQTT_HOST = 'ac283ced08d54c199286b8bdb567f195.s1.eu.hivemq.cloud';
+const MQTT_PORT = 8883;
+const MQTT_USER = 'smart_warehouse';
+const MQTT_PASS = 'Thuan@06032006';
 
-const client = mqtt.connect(`mqtt://${MQTT_HOST}`, {
-    port: MQTT_PORT
+const client = mqtt.connect(`mqtts://${MQTT_HOST}`, {
+    port: MQTT_PORT,
+    username: MQTT_USER,
+    password: MQTT_PASS,
+    protocol: 'mqtts',
+    rejectUnauthorized: true
 });
 
 client.on('connect', () => {
-    console.log('✅ MQTT Local Connected');
+    console.log('✅ MQTT Connected');
     client.subscribe('kho_thong_minh/tags/+');
 });
 
