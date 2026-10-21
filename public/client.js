@@ -1,4 +1,3 @@
-
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
@@ -29,13 +28,6 @@ controls.enableDamping = true;
 const gridHelper = new THREE.GridHelper(1000, 100, 0x535353, 0x3a3a3a);
 scene.add(gridHelper);
 
-const anchorGroup = new THREE.Group();
-scene.add(anchorGroup);
-const tagGroup = new THREE.Group();
-scene.add(tagGroup);
-const objectGroup = new THREE.Group();
-scene.add(objectGroup);
-
 // --- AXIS GIZMO ---
 const axisContainer = document.getElementById('axis-container');
 const axisScene = new THREE.Scene();
@@ -48,143 +40,8 @@ axisContainer.appendChild(axisRenderer.domElement);
 const axisHelper = new THREE.AxesHelper(1);
 axisScene.add(axisHelper);
 
-
-
 let roomMesh = null;
-let anchorsData = [];
-let objectsData = [];
-let tagMeshes = {};
-let tagDataStore = {};
-let tagInterpolation = {};
 let roomConfig = { length: 10, width: 8, height: 4 };
-
-// --- OBJECT SELECTION & MANIPULATION ---
-let selectedObjects = [];
-const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2();
-
-function getObjectByMesh(mesh) {
-    const index = objectGroup.children.indexOf(mesh);
-    if (index !== -1) {
-        return { data: objectsData[index], index };
-    }
-    return null;
-}
-
-function selectObject(mesh, additive = false) {
-    if (!additive) {
-        deselectAllObjects();
-    }
-
-    const index = selectedObjects.findIndex(obj => obj.uuid === mesh.uuid);
-    if (index === -1) {
-        selectedObjects.push(mesh);
-        mesh.material.color.set(0xff0000); // Highlight
-    } else {
-        // If already selected in additive mode, deselect it
-        mesh.material.color.set(0xaaaaaa);
-        selectedObjects.splice(index, 1);
-    }
-}
-
-function deselectAllObjects() {
-    selectedObjects.forEach(obj => {
-        if(obj) obj.material.color.set(0xaaaaaa)
-    });
-    selectedObjects = [];
-}
-
-// --- Event Listeners for Controls and Selection ---
-
-// Left-click to select
-container.addEventListener('click', (event) => {
-    const rect = renderer.domElement.getBoundingClientRect();
-    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-    raycaster.setFromCamera(mouse, camera);
-    const intersects = raycaster.intersectObjects(objectGroup.children);
-
-    if (intersects.length > 0) {
-        const firstIntersected = intersects[0].object;
-        const isAdditive = event.shiftKey;
-        selectObject(firstIntersected, isAdditive);
-    } else {
-        deselectAllObjects();
-    }
-});
-
-// --- Context Menu Logic ---
-const contextMenu = document.getElementById('context-menu');
-
-container.addEventListener('contextmenu', (event) => {
-    event.preventDefault();
-
-    // Raycast to see if we're clicking on an object
-    const rect = renderer.domElement.getBoundingClientRect();
-    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-    raycaster.setFromCamera(mouse, camera);
-    const intersects = raycaster.intersectObjects(objectGroup.children);
-
-    if (intersects.length > 0) {
-        const clickedMesh = intersects[0].object;
-        if (!selectedObjects.includes(clickedMesh)) {
-            selectObject(clickedMesh, false);
-        }
-    }
-
-    // Show context menu
-    contextMenu.style.display = 'block';
-    contextMenu.style.left = `${event.clientX}px`;
-    contextMenu.style.top = `${event.clientY}px`;
-});
-
-// Hide context menu on left-click
-window.addEventListener('click', (e) => {
-    if (!contextMenu.contains(e.target)) {
-        contextMenu.style.display = 'none';
-    }
-});
-
-document.getElementById('ctx-duplicate').addEventListener('click', () => {
-    if (selectedObjects.length > 0) {
-        selectedObjects.forEach(mesh => {
-            const objInfo = getObjectByMesh(mesh);
-            if (objInfo) {
-                 const newObject = { ...objInfo.data };
-                newObject.x += 0.5; // Offset pasted object slightly
-                newObject.y += 0.5;
-                objectsData.push(newObject);
-            }
-        });
-        renderObjectList();
-        updateObjects3D();
-    }
-    contextMenu.style.display = 'none';
-});
-
-document.getElementById('ctx-delete').addEventListener('click', () => {
-    if (selectedObjects.length > 0) {
-        const idsToDelete = selectedObjects.map(mesh => {
-            const objInfo = getObjectByMesh(mesh);
-            return objInfo ? objInfo.index : -1;
-        }).filter(index => index !== -1);
-
-        // Sort indices in descending order to avoid messing up subsequent indices when splicing
-        idsToDelete.sort((a, b) => b - a);
-
-        idsToDelete.forEach(index => {
-            objectsData.splice(index, 1);
-        });
-
-        deselectAllObjects();
-        renderObjectList();
-        updateObjects3D();
-    }
-    contextMenu.style.display = 'none';
-});
-
 
 // --- 3D LOGIC ---
 function createRoom3D(length, width, height) {
@@ -208,78 +65,10 @@ function createRoom3D(length, width, height) {
     roomConfig = { length, width, height };
 }
 
-function updateAnchors3D(anchors) {
-    while (anchorGroup.children.length > 0) anchorGroup.remove(anchorGroup.children[0]);
-    anchors.forEach(anc => {
-        const geo = new THREE.SphereGeometry(0.15, 16, 16);
-        const mat = new THREE.MeshStandardMaterial({ color: 0x00aaff });
-        const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set(anc.x, anc.z, anc.y);
-        anchorGroup.add(mesh);
-    });
-}
-
-function updateObjects3D() {
-    // Preserve selection
-    const previouslySelectedUUIDs = selectedObjects.map(m => m.uuid);
-    deselectAllObjects();
-
-    while (objectGroup.children.length > 0) objectGroup.remove(objectGroup.children[0]);
-
-    objectsData.forEach(obj => {
-        const geometry = new THREE.BoxGeometry(obj.l, obj.h, obj.w);
-        const material = new THREE.MeshStandardMaterial({ color: 0xaaaaaa });
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.position.set(obj.x, obj.z, obj.y);
-        objectGroup.add(mesh);
-    });
-
-    // Re-select objects
-    objectGroup.children.forEach(mesh => {
-        if (previouslySelectedUUIDs.includes(mesh.uuid)) {
-            selectObject(mesh, true);
-        }
-    });
-}
-
-function updateTags3D(tags) {
-    Object.keys(tags).forEach(id => {
-        const targetPos = tags[id];
-        if (!tagMeshes[id]) {
-            const geo = new THREE.SphereGeometry(0.2, 32, 32);
-            const mat = new THREE.MeshStandardMaterial({ color: 0xff4444 });
-            const mesh = new THREE.Mesh(geo, mat);
-            tagGroup.add(mesh);
-            tagMeshes[id] = mesh;
-            tagInterpolation[id] = {
-                current: new THREE.Vector3(targetPos.x, targetPos.z, targetPos.y),
-                target: new THREE.Vector3(targetPos.x, targetPos.z, targetPos.y),
-            };
-        }
-        tagInterpolation[id].target.set(targetPos.x, targetPos.z, targetPos.y);
-    });
-}
-
-function interpolateTagPositions() {
-    Object.keys(tagInterpolation).forEach(id => {
-        const interp = tagInterpolation[id];
-        if (interp) {
-            interp.current.lerp(interp.target, 0.2);
-            if (tagMeshes[id]) {
-                tagMeshes[id].position.copy(interp.current);
-            }
-        }
-    });
-}
-
-// --- KEYBOARD CONTROLS ---
+// --- KEYBOARD CONTROLS (Chỉ dành cho Camera) ---
 const keyStates = {};
-window.addEventListener('keydown', (event) => {
-    keyStates[event.key.toLowerCase()] = true;
-});
-window.addEventListener('keyup', (event) => {
-    keyStates[event.key.toLowerCase()] = false;
-});
+window.addEventListener('keydown', (event) => { keyStates[event.key.toLowerCase()] = true; });
+window.addEventListener('keyup', (event) => { keyStates[event.key.toLowerCase()] = false; });
 
 function updateCameraMovement() {
     const moveSpeed = 5.0;
@@ -310,128 +99,7 @@ function updateCameraMovement() {
     }
 }
 
-function updateObjectMovement() {
-    if (selectedObjects.length === 0) return;
-
-    const moveSpeed = 2.0; // Units per second
-    const delta = 0.016; // assume 60fps for now
-
-    const moveDistance = moveSpeed * delta;
-
-    let moveX = 0;
-    let moveY = 0;
-    let moveZ = 0;
-
-    if (keyStates['arrowup']) {
-        moveZ = -moveDistance;
-    }
-    if (keyStates['arrowdown']) {
-        moveZ = moveDistance;
-    }
-    if (keyStates['arrowleft']) {
-        moveX = -moveDistance;
-    }
-    if (keyStates['arrowright']) {
-        moveX = moveDistance;
-    }
-    if (keyStates['pageup']) {
-        moveY = moveDistance;
-    }
-    if (keyStates['pagedown']) {
-        moveY = -moveDistance;
-    }
-
-    if (moveX !== 0 || moveY !== 0 || moveZ !== 0) {
-        selectedObjects.forEach(mesh => {
-            const objInfo = getObjectByMesh(mesh);
-            if (!objInfo) return;
-
-            const { data } = objInfo;
-            const halfL = data.l / 2;
-            const halfW = data.w / 2;
-            const halfH = data.h / 2;
-
-            // Calculate new position
-            let newX = mesh.position.x + moveX;
-            let newY = mesh.position.y + moveY;
-            let newZ = mesh.position.z + moveZ;
-
-            // Clamp position within room boundaries
-            newX = Math.max(halfL, Math.min(newX, roomConfig.length - halfL));
-            newZ = Math.max(halfW, Math.min(newZ, roomConfig.width - halfW));
-            newY = Math.max(halfH, Math.min(newY, roomConfig.height - halfH));
-
-            // Apply the clamped position
-            mesh.position.set(newX, newY, newZ);
-
-
-            // Update the underlying data
-            const newPos = mesh.position;
-            data.x = newPos.x;
-            data.y = newPos.z;
-            data.z = newPos.y;
-        });
-        renderObjectList(); // Update the UI panel
-    }
-}
-
-
-// --- UI & EVENT LISTENERS ---
-
-let isRecording = false;
-let currentLogData = [];
-
-btnRecordLog.addEventListener('click', () => {
-    isRecording = !isRecording;
-    btnRecordLog.textContent = isRecording ? 'Stop' : 'Record';
-    btnRecordLog.classList.toggle('active', isRecording);
-
-    if (!isRecording && currentLogData.length > 0) {
-        // Stop recording and generate file
-        const csvContent = "data:text/csv;charset=utf-8," 
-            + "Timestamp,ID,X,Y,Z\n" 
-            + currentLogData.map(e => `${e.timestamp},${e.id},${e.x.toFixed(3)},${e.y.toFixed(3)},${e.z.toFixed(3)}`).join("\n");
-        
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        
-        const now = new Date();
-        const filename = `tag_log_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}.csv`;
-        link.setAttribute("download", filename);
-        link.textContent = filename;
-
-        const listItem = document.createElement('li');
-        listItem.appendChild(link);
-        logFileList.appendChild(listItem);
-
-        currentLogData = []; // Reset for next recording
-         updateCollapsibleHeight(document.querySelector('#tag-history-section .collapsible-content'));
-
-    } else if (isRecording) {
-        // Start recording
-        currentLogData = [];
-    }
-});
-
-
-function updateCollapsibleHeight(content) {
-    if (content && content.style.maxHeight && content.style.maxHeight !== '0px' && content.style.maxHeight !== 'fit-content') {
-        content.style.maxHeight = content.scrollHeight + "px";
-    }
-}
-
-
-
-
-
-function saveAnchors() {
-    socket.emit('set_anchors', anchorsData);
-    updateAnchors3D(anchorsData);
-}
-
-
-
+// --- UI EVENT LISTENERS ---
 document.getElementById('inpL').addEventListener('change', updateRoom);
 document.getElementById('inpW').addEventListener('change', updateRoom);
 document.getElementById('inpH').addEventListener('change', updateRoom);
@@ -453,38 +121,10 @@ socket.on('room_config_update', (cfg) => {
     document.getElementById('inpH').value = cfg.height;
 });
 
-socket.on('anchors_updated', (data) => {
-    anchorsData = data;
-    updateAnchors3D(data);
-    
-});
-
-socket.on('tags_update', (data) => {
-    tagDataStore = data;
-    updateTags3D(data);
-
-    if (isRecording) {
-        const now = new Date();
-        const timestamp = now.toLocaleTimeString('it-IT'); // Use a consistent format
-        Object.keys(data).forEach(id => {
-            const pos = data[id];
-            currentLogData.push({
-                timestamp: timestamp,
-                id: id,
-                x: pos.x,
-                y: pos.y,
-                z: pos.z
-            });
-        });
-    }
-});
-
 // --- ANIMATION LOOP & RESIZE ---
 function animate() {
     requestAnimationFrame(animate);
     updateCameraMovement();
-    updateObjectMovement();
-    interpolateTagPositions();
     controls.update();
     renderer.render(scene, camera);
     axisCamera.quaternion.copy(camera.quaternion);
@@ -506,34 +146,9 @@ window.addEventListener('resize', () => {
 
 // Initial setup
 createRoom3D(roomConfig.length, roomConfig.width, roomConfig.height);
-
 window.dispatchEvent(new Event('resize'));
 
-
-// --- UI LOGIC (MOVED FROM INDEX.HTML) ---
-
-// Switch between 3D and 2D modes
-const btn3d = document.getElementById('btn-mode-3d');
-const sceneContainer = document.getElementById('scene-container');
-
-btn3d.addEventListener('click', () => {
-    sceneContainer.style.display = 'block';
-    mapContainer.style.display = 'none';
-    axisContainer.style.display = 'block';
-    btn3d.classList.add('active');
-    btn2d.classList.remove('active');
-});
-
-btn2d.addEventListener('click', () => {
-    sceneContainer.style.display = 'none';
-    mapContainer.style.display = 'flex';
-    axisContainer.style.display = 'none';
-    btn2d.classList.add('active');
-    btn3d.classList.remove('active');
-    window.dispatchEvent(new Event('resize'));
-});
-
-// Collapsible sections
+// --- UI LOGIC (Bảng điều khiển & Floating Panel) ---
 const collapsibles = document.querySelectorAll('.collapsible');
 collapsibles.forEach(coll => {
     coll.addEventListener('click', () => {
@@ -547,7 +162,6 @@ collapsibles.forEach(coll => {
     });
 });
 
-// Floating Panel Logic
 const settingsBtn = document.getElementById('btn-settings');
 const closePanelBtn = document.getElementById('btn-close-panel');
 const floatingPanel = document.getElementById('floating-panel');
