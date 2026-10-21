@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>4-Ways Shuttle Pallet Dashboard</title>
+    <title>4-WAYS SHUTTLE PALLET DASHBOARD</title>
     <link rel="stylesheet" href="style.css">
     <script type="importmap">
         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
@@ -12,10 +12,12 @@
 <body>
     <div id="app-container">
         <header id="app-header">
+            <!-- Đổi tên Dashboard -->
             <h1>4-WAYS SHUTTLE PALLET DASHBOARD</h1>
             <div class="header-controls">
                  <button id="btn-settings" class="btn-mode">Cài đặt</button>
                 <div id="mode-switcher">
+                    <!-- Chỉ giữ lại chế độ 3D -->
                     <button class="btn-mode active" id="btn-mode-3d">3D</button>
                 </div>
             </div>
@@ -28,6 +30,7 @@
                     <button id="btn-close-panel">✕</button>
                 </div>
                 <div class="panel-content">
+                    <!-- Chỉ giữ lại Cấu hình Kho -->
                     <div class="panel-section" id="config-section">
                         <h2 class="collapsible">Cấu hình Kho</h2>
                         <div class="collapsible-content">
@@ -41,16 +44,13 @@
                             </div>
                         </div>
                     </div>
+                    <!-- Đã xóa các section: Anchor, Vật thể, Tags Real-time, Tag History -->
                 </div>
             </div>
 
             <div id="scene-container"></div>
+            <!-- Đã xóa map-2d-container -->
             <div id="axis-container"></div>
-
-            <ul id="context-menu" class="context-menu">
-                <li id="ctx-duplicate">Duplicate</li>
-                <li id="ctx-delete">Delete</li>
-            </ul>
         </main>
     </div>
 
