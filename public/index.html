@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Indoor Positioning Dashboard</title>
+    <title>4-Ways Shuttle Pallet Dashboard</title>
     <link rel="stylesheet" href="style.css">
     <script type="importmap">
         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
@@ -13,12 +12,11 @@
 <body>
     <div id="app-container">
         <header id="app-header">
-            <h1>INDOOR POSITIONING DASHBOARD</h1>
+            <h1>4-WAYS SHUTTLE PALLET DASHBOARD</h1>
             <div class="header-controls">
                  <button id="btn-settings" class="btn-mode">Cài đặt</button>
                 <div id="mode-switcher">
                     <button class="btn-mode active" id="btn-mode-3d">3D</button>
-                    <button class="btn-mode" id="btn-mode-2d">2D</button>
                 </div>
             </div>
         </header>
@@ -43,50 +41,10 @@
                             </div>
                         </div>
                     </div>
-
-                    <div class="panel-section" id="anchors-section">
-                        <h2 class="collapsible">Quản lý Anchor</h2>
-                        <div class="collapsible-content">
-                            <div id="anchor-list"></div>
-                            <div class="button-group">
-                                <button id="btn-add-anchor" class="btn-secondary">Thêm</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="panel-section" id="objects-section">
-                        <h2 class="collapsible">Vật thể</h2>
-                        <div class="collapsible-content">
-                            <div id="object-list"></div>
-                             <div class="button-group">
-                                <button class="btn-secondary" id="btn-add-object">Thêm</button>
-                            </div>
-                        </div>
-                    </div>
-
-                     <div class="panel-section" id="tags-section">
-                        <h2 class="collapsible active">Tags Real-time <button id="btn-record-log" class="btn-secondary">Record</button></h2>
-                        <div class="collapsible-content" style="max-height: fit-content;">
-                            <div class="table-container">
-                                <table id="tag-table">
-                                    <thead><tr><th>ID</th><th>X</th><th>Y</th><th>Z</th><th>+/-</th></tr></thead>
-                                    <tbody id="tag-table-body"></tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="panel-section" id="tag-history-section">
-                        <h2 class="collapsible">Tag History</h2>
-                        <div class="collapsible-content">
-                            <ul id="log-file-list"></ul>
-                        </div>
-                    </div>
                 </div>
             </div>
 
             <div id="scene-container"></div>
-            <div id="map-2d-container"><canvas id="main-2d-canvas"></canvas></div>
             <div id="axis-container"></div>
 
             <ul id="context-menu" class="context-menu">
