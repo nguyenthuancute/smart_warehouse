@@ -48,8 +48,7 @@ axisContainer.appendChild(axisRenderer.domElement);
 const axisHelper = new THREE.AxesHelper(1);
 axisScene.add(axisHelper);
 
-const canvas2d = document.getElementById('main-2d-canvas');
-const ctx2d = canvas2d.getContext('2d');
+
 
 let roomMesh = null;
 let anchorsData = [];
@@ -423,8 +422,7 @@ function updateCollapsibleHeight(content) {
 }
 
 
-const anchorList = document.getElementById('anchor-list');
-const objectList = document.getElementById('object-list');
+
 
 
 function saveAnchors() {
@@ -458,7 +456,7 @@ socket.on('room_config_update', (cfg) => {
 socket.on('anchors_updated', (data) => {
     anchorsData = data;
     updateAnchors3D(data);
-    renderAnchorList();
+    
 });
 
 socket.on('tags_update', (data) => {
@@ -508,8 +506,7 @@ window.addEventListener('resize', () => {
 
 // Initial setup
 createRoom3D(roomConfig.length, roomConfig.width, roomConfig.height);
-renderAnchorList();
-renderObjectList();
+
 window.dispatchEvent(new Event('resize'));
 
 
