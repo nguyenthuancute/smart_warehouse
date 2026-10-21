@@ -380,8 +380,6 @@ function updateObjectMovement() {
 // --- UI & EVENT LISTENERS ---
 
 let isRecording = false;
-const btnRecordLog = document.getElementById('btn-record-log');
-const logFileList = document.getElementById('log-file-list');
 let currentLogData = [];
 
 btnRecordLog.addEventListener('click', () => {
@@ -424,148 +422,17 @@ function updateCollapsibleHeight(content) {
     }
 }
 
-function updateTable(tags) {
-    const tbody = document.getElementById('tag-table-body');
-    if (Object.keys(tags).length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="color:#999;">Waiting for data...</td></tr>';
-        return;
-    }
-    tbody.innerHTML = '';
-    Object.keys(tags).forEach(id => {
-        const pos = tags[id];
-        const accuracyColor = pos.accuracy < 0.5 ? '#28a745' : pos.accuracy < 1.0 ? '#ffc107' : '#dc3545';
-        const row = `<tr>
-            <td><b>${id}</b></td>
-            <td>${pos.x.toFixed(2)}</td>
-            <td>${pos.y.toFixed(2)}</td>
-            <td>${pos.z.toFixed(2)}</td>
-            <td style="color:${accuracyColor};font-weight:bold;">${pos.accuracy !== undefined ? '±' + pos.accuracy.toFixed(2) : 'N/A'}</td>
-        </tr>`;
-        tbody.innerHTML += row;
-    });
-}
 
 const anchorList = document.getElementById('anchor-list');
 const objectList = document.getElementById('object-list');
 
-function renderAnchorList() {
-    anchorList.innerHTML = '';
-    anchorsData.forEach((anchor, index) => {
-        const item = document.createElement('div');
-        item.className = 'anchor-item';
-        item.innerHTML = `
-            <span class="anchor-id">A${index}</span>
-            <input type="number" class="anchor-x" value="${anchor.x.toFixed(2)}" placeholder="x" data-index="${index}">
-            <input type="number" class="anchor-y" value="${anchor.y.toFixed(2)}" placeholder="y" data-index="${index}">
-            <input type="number" class="anchor-z" value="${anchor.z.toFixed(2)}" placeholder="z" data-index="${index}">
-            <button class="btn-remove-anchor" data-index="${index}">X</button>
-        `;
-        anchorList.appendChild(item);
-    });
-
-    document.querySelectorAll('.btn-remove-anchor').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const index = parseInt(e.target.dataset.index);
-            anchorsData.splice(index, 1);
-            saveAnchors();
-            renderAnchorList();
-        });
-    });
-
-    document.querySelectorAll('#anchor-list input').forEach(input => {
-        input.addEventListener('change', (e) => {
-            const index = parseInt(e.target.dataset.index);
-            const axis = e.target.classList.contains('anchor-x') ? 'x' : e.target.classList.contains('anchor-y') ? 'y' : 'z';
-            anchorsData[index][axis] = parseFloat(e.target.value);
-            saveAnchors();
-        });
-    });
-}
 
 function saveAnchors() {
     socket.emit('set_anchors', anchorsData);
     updateAnchors3D(anchorsData);
 }
 
-function renderObjectList() {
-    objectList.innerHTML = '';
-    objectsData.forEach((obj, index) => {
-        const item = document.createElement('div');
-        item.className = 'object-item';
-        item.innerHTML = `
-            <div class="object-header">
-                <span class="object-id">OBJ ${index + 1}</span>
-                <div>
-                    <button class="btn-duplicate-object" data-index="${index}">Dup</button>
-                    <button class="btn-remove-object" data-index="${index}">Del</button>
-                </div>
-            </div>
-            <div class="object-props">
-                <div class="prop-group">
-                    <label>Kích thước:</label>
-                    <input type="number" class="obj-l" value="${obj.l}" data-index="${index}" placeholder="D">
-                    <input type="number" class="obj-w" value="${obj.w}" data-index="${index}" placeholder="R">
-                    <input type="number" class="obj-h" value="${obj.h}" data-index="${index}" placeholder="C">
-                </div>
-                <div class="prop-group">
-                    <label>Vị trí:</label>
-                    <input type="number" class="obj-x" value="${obj.x}" data-index="${index}" placeholder="X">
-                    <input type="number" class="obj-y" value="${obj.y}" data-index="${index}" placeholder="Y">
-                    <input type="number" class="obj-z" value="${obj.z}" data-index="${index}" placeholder="Z">
-                </div>
-            </div>
-        `;
-        objectList.appendChild(item);
-    });
 
-    document.querySelectorAll('.btn-remove-object').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const index = parseInt(e.target.dataset.index);
-            objectsData.splice(index, 1);
-            renderObjectList();
-            updateObjects3D();
-        });
-    });
-
-    document.querySelectorAll('.btn-duplicate-object').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const index = parseInt(e.target.dataset.index);
-            const originalObject = objectsData[index];
-            if (originalObject) {
-                const newObject = { ...originalObject };
-                newObject.x += 0.5; // Offset duplicated object slightly
-                newObject.y += 0.5;
-                objectsData.push(newObject);
-                renderObjectList();
-                updateObjects3D();
-            }
-        });
-    });
-
-    document.querySelectorAll('#object-list input').forEach(input => {
-        input.addEventListener('change', (e) => {
-            const index = parseInt(e.target.dataset.index);
-            const prop = e.target.classList[0].split('-')[1];
-            objectsData[index][prop] = parseFloat(e.target.value);
-            updateObjects3D();
-        });
-    });
-}
-
-document.getElementById('btn-add-anchor').addEventListener('click', () => {
-    anchorsData.push({ id: anchorsData.length, x: 0, y: 0, z: 0 });
-    renderAnchorList();
-    saveAnchors();
-    updateCollapsibleHeight(document.querySelector('#anchors-section .collapsible-content'));
-
-});
-
-document.getElementById('btn-add-object').addEventListener('click', () => {
-    objectsData.push({ l: 1, w: 1, h: 1, x: 0, y: 0, z: 0 });
-    renderObjectList();
-    updateObjects3D();
-    updateCollapsibleHeight(document.querySelector('#objects-section .collapsible-content'));
-});
 
 document.getElementById('inpL').addEventListener('change', updateRoom);
 document.getElementById('inpW').addEventListener('change', updateRoom);
@@ -597,7 +464,6 @@ socket.on('anchors_updated', (data) => {
 socket.on('tags_update', (data) => {
     tagDataStore = data;
     updateTags3D(data);
-    updateTable(data);
 
     if (isRecording) {
         const now = new Date();
@@ -651,9 +517,7 @@ window.dispatchEvent(new Event('resize'));
 
 // Switch between 3D and 2D modes
 const btn3d = document.getElementById('btn-mode-3d');
-const btn2d = document.getElementById('btn-mode-2d');
 const sceneContainer = document.getElementById('scene-container');
-const mapContainer = document.getElementById('map-2d-container');
 
 btn3d.addEventListener('click', () => {
     sceneContainer.style.display = 'block';
