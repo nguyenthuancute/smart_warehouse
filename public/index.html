@@ -46,6 +46,25 @@
                     </div>
                     <!-- Đã xóa các section: Anchor, Vật thể, Tags Real-time, Tag History -->
                 </div>
+                <!-- Đặt đoạn này ngay bên dưới section Cấu hình Kho -->
+                    <div class="panel-section" id="racks-section">
+                        <h2 class="collapsible">Quản lý Kệ hàng (Racks)</h2>
+                        <div class="collapsible-content">
+                            <div class="form-group">
+                                <label>Thông số kệ mới (Dài - Rộng - Cao - Số tầng):</label>
+                                <div class="input-group">
+                                    <input type="number" id="rackL" placeholder="Dài" value="2">
+                                    <input type="number" id="rackW" placeholder="Rộng" value="1">
+                                    <input type="number" id="rackH" placeholder="Cao" value="3">
+                                    <input type="number" id="rackTiers" placeholder="Tầng" value="4">
+                                </div>
+                                <button id="btn-add-rack" class="btn-secondary" style="margin-top: 5px;">+ Thêm Kệ</button>
+                            </div>
+                            <div id="rack-list" style="margin-top: 15px; max-height: 150px; overflow-y: auto;">
+                                <!-- Danh sách kệ sẽ hiển thị ở đây -->
+                            </div>
+                        </div>
+                    </div>
             </div>
 
             <div id="scene-container"></div>
