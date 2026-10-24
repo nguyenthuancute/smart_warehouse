@@ -15,26 +15,25 @@ app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // --- DỮ LIỆU BỘ NHỚ ---
-let anchors = [];
-// Thay đổi từ tagPositions thành tagsData để lưu trữ dữ liệu khoảng cách thô
-let tagsData = {}; 
 let roomConfig = { length: 10, width: 8, height: 4 };
+let racksData = []; // Thêm dòng này để lưu dữ liệu kệ hàng
 
 // --- SOCKET.IO ---
 io.on('connection', (socket) => {
     console.log('🔌 Client connected');
     socket.emit('room_config_update', roomConfig);
-    socket.emit('anchors_updated', anchors);
+    socket.emit('racks_updated', racksData); // Gửi dữ liệu kệ khi client kết nối
 
     socket.on('update_room_config', (config) => {
         roomConfig = config;
         io.emit('room_config_update', roomConfig);
     });
 
-    socket.on('set_anchors', (newAnchors) => {
-        anchors = newAnchors;
-        console.log("📡 Updated Anchors:", anchors);
-        io.emit('anchors_updated', anchors);
+    // Thêm block này để lắng nghe sự thay đổi kệ hàng từ client
+    socket.on('set_racks', (newRacks) => {
+        racksData = newRacks;
+        // Broadcast cho các client khác (trừ người gửi) để đồng bộ
+        socket.broadcast.emit('racks_updated', racksData); 
     });
 });
 
