@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { DragControls } from 'three/addons/controls/DragControls.js'; // Import công cụ kéo thả
-
+// Thêm dòng này vào:
+import { DragControls } from 'three/addons/controls/DragControls.js';
 const socket = io();
 
 // --- SETUP THREE.JS (3D) ---
