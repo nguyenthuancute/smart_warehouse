@@ -196,9 +196,10 @@ function renderRackListUI() {
 }
 
 // ================= SỰ KIỆN UI =================
-$('inpL').readOnly = true; $('inpW').readOnly = true; // L, W lấy theo layout
+const clamp = (v, lo, hi, def) => (Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : def);
 $('inpH').addEventListener('change', () => {
-    const h = parseFloat($('inpH').value) || 8;
+    const h = clamp(parseFloat($('inpH').value), 3, 30, 8);
+    $('inpH').value = h;
     roomConfig = { ...roomConfig, height: h };
     buildStatic();
     socket.emit('update_room_config', roomConfig);
@@ -208,10 +209,10 @@ $('btn-add-rack').addEventListener('click', () => {
     racksData.push({
         id: 'rack-' + Date.now(),
         x: 2, z: 2,
-        cols: parseInt($('rackC').value) || 4,
-        rows: parseInt($('rackR').value) || 10,
-        tiers: parseInt($('rackT').value) || 4,
-        tierH: parseFloat($('rackTH').value) || 1.5,
+        cols: clamp(parseInt($('rackC').value), 1, 12, 4),
+        rows: clamp(parseInt($('rackR').value), 1, 30, 10),
+        tiers: clamp(parseInt($('rackT').value), 1, 10, 4),
+        tierH: clamp(parseFloat($('rackTH').value), 0.5, 3, 1.5),
         cellX: 1.22, cellZ: 1.17, pitchZ: 1.55
     });
     updateRacks();
@@ -281,6 +282,6 @@ const panel = $('floating-panel'), header = document.querySelector('.panel-heade
 $('btn-settings').addEventListener('click', () => { panel.style.display = 'flex'; });
 $('btn-close-panel').addEventListener('click', () => { panel.style.display = 'none'; });
 let dragging = false, sx, sy, ix, iy;
-header.addEventListener('mousedown', (e) => { dragging = true; sx = e.clientX; sy = e.clientY; ix = panel.offsetLeft; iy = panel.offsetTop; });
+header.addEventListener('mousedown', (e) => { if (e.target.tagName === 'BUTTON') return; dragging = true; sx = e.clientX; sy = e.clientY; ix = panel.offsetLeft; iy = panel.offsetTop; });
 document.addEventListener('mousemove', (e) => { if (dragging) { panel.style.left = ix + e.clientX - sx + 'px'; panel.style.top = iy + e.clientY - sy + 'px'; } });
 document.addEventListener('mouseup', () => { dragging = false; });
