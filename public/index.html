@@ -28,9 +28,9 @@
                             <div class="form-group">
                                 <label>Dài - Rộng (theo layout) - Cao:</label>
                                 <div class="input-group">
-                                    <input type="number" id="inpL" placeholder="X">
-                                    <input type="number" id="inpW" placeholder="Z">
-                                    <input type="number" id="inpH" placeholder="Y" value="8">
+                                    <input type="number" id="inpL" placeholder="X" readonly>
+                                    <input type="number" id="inpW" placeholder="Z" readonly>
+                                    <input type="number" id="inpH" placeholder="Y" value="8" min="3" max="30">
                                 </div>
                             </div>
                         </div>
@@ -41,10 +41,10 @@
                             <div class="form-group">
                                 <label>Số cột - Số hàng - Số tầng - Cao/tầng (m):</label>
                                 <div class="input-group">
-                                    <input type="number" id="rackC" value="4">
-                                    <input type="number" id="rackR" value="10">
-                                    <input type="number" id="rackT" value="4">
-                                    <input type="number" id="rackTH" value="1.5" step="0.1">
+                                    <input type="number" id="rackC" value="4" min="1" max="12">
+                                    <input type="number" id="rackR" value="10" min="1" max="30">
+                                    <input type="number" id="rackT" value="4" min="1" max="10">
+                                    <input type="number" id="rackTH" value="1.5" step="0.1" min="0.5" max="3">
                                 </div>
                             </div>
                             <button id="btn-add-rack" class="btn-secondary">+ Thêm Kệ</button>
@@ -61,6 +61,6 @@
         </main>
     </div>
     <script src="/socket.io/socket.io.js"></script>
-    <script type="module" src="client.js"></script>
+    <script type="module" src="client.js?v=2"></script>
 </body>
 </html>
