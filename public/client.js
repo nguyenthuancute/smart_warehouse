@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { DragControls } from 'three/addons/controls/DragControls.js';
 const socket = io();
 const $ = (id) => document.getElementById(id);
 
@@ -42,7 +41,6 @@ let racksData = [];
 let staticGroup = null;
 const rackGroup = new THREE.Group();
 scene.add(rackGroup);
-let dragControls = null;
 
 // ================= VẬT LIỆU / HÌNH DÙNG CHUNG =================
 const mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, ...o });
@@ -105,23 +103,8 @@ function createRack3D(r) {
 function updateRacks() {
     rackGroup.children.forEach((g) => g.traverse((o) => o.isInstancedMesh && o.dispose()));
     rackGroup.clear();
-    const meshes = racksData.map((r) => { const g = createRack3D(r); rackGroup.add(g); return g; });
+    racksData.forEach((r) => rackGroup.add(createRack3D(r)));
 
-    if (dragControls) dragControls.dispose();
-    dragControls = new DragControls(meshes, camera, renderer.domElement);
-    dragControls.transformGroup = true;
-    dragControls.enabled = $('chk-drag').checked;
-    dragControls.addEventListener('dragstart', () => { controls.enabled = false; });
-    dragControls.addEventListener('drag', (e) => {
-        e.object.position.y = 0;
-        const r = racksData.find((x) => x.id === e.object.userData.id);
-        if (r) { r.x = e.object.position.x; r.z = e.object.position.z; }
-    });
-    dragControls.addEventListener('dragend', () => {
-        controls.enabled = true;
-        socket.emit('set_racks', racksData);
-        renderRackListUI();
-    });
     renderRackListUI();
 }
 
@@ -195,6 +178,52 @@ function renderRackListUI() {
     $('rack-summary').textContent = `${racksData.length} cụm kệ · ${cells} vị trí pallet`;
 }
 
+
+// ================= KÉO KỆ (raycaster, chọn đúng kệ được bấm) =================
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const hitPt = new THREE.Vector3(), dragOffset = new THREE.Vector3();
+let dragObj = null;
+function setRay(e) {
+    const r = renderer.domElement.getBoundingClientRect();
+    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    raycaster.setFromCamera(ndc, camera);
+}
+// capture=true để chạy trước OrbitControls
+renderer.domElement.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || !$('chk-drag').checked) return;
+    setRay(e);
+    const hit = raycaster.intersectObjects(rackGroup.children, true)[0];
+    if (!hit) return;
+    let o = hit.object;
+    while (o && !(o.userData && o.userData.id)) o = o.parent;
+    if (!o || !raycaster.ray.intersectPlane(groundPlane, hitPt)) return;
+    dragObj = o;
+    dragOffset.copy(o.position).sub(hitPt);
+    controls.enabled = false;
+}, true);
+window.addEventListener('pointermove', (e) => {
+    if (!dragObj) return;
+    setRay(e);
+    if (!raycaster.ray.intersectPlane(groundPlane, hitPt)) return;
+    const r = racksData.find((x) => x.id === dragObj.userData.id);
+    if (!r) return;
+    const snap = (v) => Math.round(v / 0.05) * 0.05;
+    const maxX = Math.max(0, roomConfig.length - r.cols * r.cellX);
+    const maxZ = Math.max(0, roomConfig.width - r.rows * r.pitchZ);
+    r.x = Math.min(maxX, Math.max(0, snap(hitPt.x + dragOffset.x)));
+    r.z = Math.min(maxZ, Math.max(0, snap(hitPt.z + dragOffset.z)));
+    dragObj.position.set(r.x, 0, r.z);
+});
+window.addEventListener('pointerup', () => {
+    if (!dragObj) return;
+    dragObj = null;
+    controls.enabled = true;
+    socket.emit('set_racks', racksData);
+    renderRackListUI();
+});
+
 // ================= SỰ KIỆN UI =================
 const clamp = (v, lo, hi, def) => (Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : def);
 $('inpH').addEventListener('change', () => {
@@ -204,7 +233,7 @@ $('inpH').addEventListener('change', () => {
     buildStatic();
     socket.emit('update_room_config', roomConfig);
 });
-$('chk-drag').addEventListener('change', (e) => { if (dragControls) dragControls.enabled = e.target.checked; });
+$('chk-drag').addEventListener('change', (e) => { renderer.domElement.style.cursor = e.target.checked ? 'move' : ''; });
 $('btn-add-rack').addEventListener('click', () => {
     racksData.push({
         id: 'rack-' + Date.now(),
