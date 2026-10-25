@@ -1,85 +1,65 @@
 require('dotenv').config();
 const express = require('express');
 const http = require('http');
-const { Server } = require("socket.io");
+const { Server } = require('socket.io');
 const mqtt = require('mqtt');
 const bodyParser = require('body-parser');
+const layout = require('./public/layout.json');
 
-// --- CẤU HÌNH ---
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
-
 app.use(express.static('public'));
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// --- DỮ LIỆU BỘ NHỚ ---
-let roomConfig = { length: 10, width: 8, height: 4 };
-let racksData = []; // Thêm dòng này để lưu dữ liệu kệ hàng
+// --- DỮ LIỆU BỘ NHỚ (khởi tạo từ layout thật) ---
+let roomConfig = { ...layout.room };
+let racksData = JSON.parse(JSON.stringify(layout.racks));
+const tagsData = {}; // FIX: trước đây dùng mà chưa khai báo -> ReferenceError
 
-// --- SOCKET.IO ---
 io.on('connection', (socket) => {
-    console.log('🔌 Client connected');
     socket.emit('room_config_update', roomConfig);
-    socket.emit('racks_updated', racksData); // Gửi dữ liệu kệ khi client kết nối
+    socket.emit('racks_updated', racksData);
 
-    socket.on('update_room_config', (config) => {
-        roomConfig = config;
+    socket.on('update_room_config', (cfg) => {
+        const { length, width, height } = cfg || {};
+        if ([length, width, height].some(v => !(v > 0 && v < 500))) return;
+        roomConfig = { length, width, height };
         io.emit('room_config_update', roomConfig);
     });
 
-    // Thêm block này để lắng nghe sự thay đổi kệ hàng từ client
-    socket.on('set_racks', (newRacks) => {
-        racksData = newRacks;
-        // Broadcast cho các client khác (trừ người gửi) để đồng bộ
-        socket.broadcast.emit('racks_updated', racksData); 
+    socket.on('set_racks', (racks) => {
+        if (!Array.isArray(racks) || racks.length > 200) return;
+        racksData = racks;
+        socket.broadcast.emit('racks_updated', racksData);
     });
 });
 
-// --- MQTT ---
-const MQTT_HOST = 'ac283ced08d54c199286b8bdb567f195.s1.eu.hivemq.cloud';
-const MQTT_PORT = 8883;
-const MQTT_USER = 'smart_warehouse';
-const MQTT_PASS = 'Thuan@06032006';
+// --- MQTT (thông tin đăng nhập lấy từ .env, không hard-code) ---
+if (process.env.MQTT_HOST) {
+    const client = mqtt.connect(`mqtts://${process.env.MQTT_HOST}`, {
+        port: Number(process.env.MQTT_PORT) || 8883,
+        username: process.env.MQTT_USER,
+        password: process.env.MQTT_PASS,
+        protocol: 'mqtts',
+        rejectUnauthorized: true
+    });
+    client.on('connect', () => { console.log('✅ MQTT Connected'); client.subscribe('kho_thong_minh/tags/+'); });
+    client.on('error', (e) => console.error('MQTT error:', e.message));
+    client.on('message', (topic, message) => {
+        try {
+            const tagId = topic.split('/').pop();
+            tagsData[tagId] = { distances: JSON.parse(message.toString()).distances, lastUpdated: Date.now() };
+        } catch (e) { console.error('MQTT Message Error:', e.message); }
+    });
+} else {
+    console.log('ℹ️ Chưa cấu hình MQTT_HOST trong .env -> bỏ qua MQTT');
+}
 
-const client = mqtt.connect(`mqtts://${MQTT_HOST}`, {
-    port: MQTT_PORT,
-    username: MQTT_USER,
-    password: MQTT_PASS,
-    protocol: 'mqtts',
-    rejectUnauthorized: true
-});
-
-client.on('connect', () => {
-    console.log('✅ MQTT Connected');
-    client.subscribe('kho_thong_minh/tags/+');
-});
-
-client.on('message', async (topic, message) => {
-    try {
-        const tagId = topic.split('/').pop();
-        const data = JSON.parse(message.toString());
-        const dists = data.distances;
-
-        // Bỏ thuật toán Multilateration và Kalman Filter.
-        // Chỉ lưu trữ dữ liệu khoảng cách thô (raw distances) gửi qua Socket.io
-        tagsData[tagId] = { distances: dists, lastUpdated: Date.now() };
-        
-    } catch (e) { 
-        console.error('MQTT Message Error:', e); 
-    }
-});
-
-// --- SERVER-SIDE UPDATE LOOP ---
-const UPDATE_INTERVAL = 33; // ~30 FPS
 setInterval(() => {
-    if (Object.keys(tagsData).length > 0) {
-        io.emit('tags_update', tagsData);
-    }
-}, UPDATE_INTERVAL);
+    if (Object.keys(tagsData).length > 0) io.emit('tags_update', tagsData);
+}, 33);
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-});
+server.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server running on port ${PORT}`));
