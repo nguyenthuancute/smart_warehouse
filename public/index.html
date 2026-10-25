@@ -12,64 +12,54 @@
 <body>
     <div id="app-container">
         <header id="app-header">
-            <!-- Đổi tên Dashboard -->
             <h1>4-WAYS SHUTTLE PALLET DASHBOARD</h1>
             <div class="header-controls">
-                 <button id="btn-settings" class="btn-mode">Cài đặt</button>
-                <div id="mode-switcher">
-                    <!-- Chỉ giữ lại chế độ 3D -->
-                    <button class="btn-mode active" id="btn-mode-3d">3D</button>
-                </div>
+                <button id="btn-settings" class="btn-mode">Cài đặt</button>
+                <div id="mode-switcher"><button class="btn-mode active" id="btn-mode-3d">3D</button></div>
             </div>
         </header>
-
         <main id="viewport">
             <div id="floating-panel">
-                <div class="panel-header">
-                    <h3>Bảng điều khiển</h3>
-                    <button id="btn-close-panel">✕</button>
-                </div>
+                <div class="panel-header"><h3>Bảng điều khiển</h3><button id="btn-close-panel">✕</button></div>
                 <div class="panel-content">
-                    <!-- Chỉ giữ lại Cấu hình Kho -->
                     <div class="panel-section" id="config-section">
-                        <h2 class="collapsible">Cấu hình Kho</h2>
-                        <div class="collapsible-content">
+                        <h2 class="collapsible active">Cấu hình Kho (m)</h2>
+                        <div class="collapsible-content" style="max-height:none">
                             <div class="form-group">
-                                <label>Kích thước (D-R-C):</label>
+                                <label>Dài - Rộng (theo layout) - Cao:</label>
                                 <div class="input-group">
                                     <input type="number" id="inpL" placeholder="X">
-                                    <input type="number" id="inpW" placeholder="Y">
-                                    <input type="number" id="inpH" placeholder="Z">
+                                    <input type="number" id="inpW" placeholder="Z">
+                                    <input type="number" id="inpH" placeholder="Y" value="8">
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <!-- Đã xóa các section: Anchor, Vật thể, Tags Real-time, Tag History -->
+                    <div class="panel-section" id="racks-section">
+                        <h2 class="collapsible active">Quản lý Kệ hàng</h2>
+                        <div class="collapsible-content" style="max-height:none">
+                            <div class="form-group">
+                                <label>Số cột - Số hàng - Số tầng - Cao/tầng (m):</label>
+                                <div class="input-group">
+                                    <input type="number" id="rackC" value="4">
+                                    <input type="number" id="rackR" value="10">
+                                    <input type="number" id="rackT" value="4">
+                                    <input type="number" id="rackTH" value="1.5" step="0.1">
+                                </div>
+                            </div>
+                            <button id="btn-add-rack" class="btn-secondary">+ Thêm Kệ</button>
+                            <button id="btn-load-layout" class="btn-secondary" style="margin-top:6px">↺ Nạp lại layout kho</button>
+                            <label style="display:block;margin:10px 0 6px;font-size:.85em"><input type="checkbox" id="chk-drag"> Cho phép kéo kệ</label>
+                            <div id="rack-summary" style="font-size:.8em;color:var(--secondary);margin-bottom:6px"></div>
+                            <div id="rack-list"></div>
+                        </div>
+                    </div>
                 </div>
-              <!-- Chèn đoạn này NGAY DƯỚI phần Cấu hình Kho -->
-<div class="panel-section" id="racks-section">
-    <h2 class="collapsible">Quản lý Kệ hàng</h2>
-    <div class="collapsible-content">
-        <div class="form-group">
-            <label>Kích thước (D-R-C) & Tầng:</label>
-            <div class="input-group">
-                <input type="number" id="rackL" placeholder="Dài" value="3" style="width: 25%;">
-                <input type="number" id="rackW" placeholder="Rộng" value="1" style="width: 25%;">
-                <input type="number" id="rackH" placeholder="Cao" value="2.5" style="width: 25%;">
-                <input type="number" id="rackT" placeholder="Tầng" value="4" style="width: 25%;">
             </div>
-        </div>
-        <button id="btn-add-rack" class="btn-secondary" style="width: 100%; margin-top: 8px;">+ Thêm Kệ</button>
-    </div>
-</div>
-            </div>
-
             <div id="scene-container"></div>
-            <!-- Đã xóa map-2d-container -->
             <div id="axis-container"></div>
         </main>
     </div>
-
     <script src="/socket.io/socket.io.js"></script>
     <script type="module" src="client.js"></script>
 </body>
