@@ -1,361 +1,286 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-// Thêm dòng này vào:
 import { DragControls } from 'three/addons/controls/DragControls.js';
 const socket = io();
+const $ = (id) => document.getElementById(id);
 
-// --- SETUP THREE.JS (3D) ---
-const container = document.getElementById('scene-container');
+// ================= SCENE =================
+const container = $('scene-container');
+const viewport = $('viewport');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1a1a2e);
-
-const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
-camera.position.set(15, 20, 15);
-camera.lookAt(0, 0, 0);
-
+const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 1000);
+camera.position.set(28, 38, 48);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(container.clientWidth, container.clientHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 container.appendChild(renderer.domElement);
-
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-scene.add(ambientLight);
-const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
-dirLight.position.set(10, 20, 10);
-scene.add(dirLight);
-
+scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+sun.position.set(20, 40, 10);
+scene.add(sun);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
+controls.target.set(28, 0, 10);
+controls.maxPolarAngle = Math.PI * 0.499;
+const grid = new THREE.GridHelper(200, 200, 0x535353, 0x2e2e3e);
+grid.position.set(28, -0.02, 10);
+scene.add(grid);
 
-const gridHelper = new THREE.GridHelper(1000, 100, 0x535353, 0x3a3a3a);
-scene.add(gridHelper);
-
-// --- AXIS GIZMO ---
-const axisContainer = document.getElementById('axis-container');
+// Axis gizmo
+const axisContainer = $('axis-container');
 const axisScene = new THREE.Scene();
-const axisCamera = new THREE.PerspectiveCamera(50, axisContainer.clientWidth / axisContainer.clientHeight, 0.1, 10);
+const axisCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 10);
 axisCamera.position.z = 2;
 const axisRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-axisRenderer.setSize(axisContainer.clientWidth, axisContainer.clientHeight);
 axisContainer.appendChild(axisRenderer.domElement);
+axisScene.add(new THREE.AxesHelper(1));
 
-const axisHelper = new THREE.AxesHelper(1);
-axisScene.add(axisHelper);
-
-let roomMesh = null;
-let roomConfig = { length: 10, width: 8, height: 4 };
-
-// --- RACKS (KỆ HÀNG) & DRAG CONTROLS ---
-let racksData = []; 
-const rackGroup = new THREE.Group(); 
+// ================= DỮ LIỆU =================
+let layout = null;
+let roomConfig = { length: 55.9, width: 20.4, height: 8 };
+let racksData = [];
+let staticGroup = null;
+const rackGroup = new THREE.Group();
 scene.add(rackGroup);
+let dragControls = null;
 
-let dragControls;
-let rackMeshes = []; // Mảng chứa các mesh kệ để DragControls nhận diện
+// ================= VẬT LIỆU / HÌNH DÙNG CHUNG =================
+const mat = (c, o = {}) => new THREE.MeshStandardMaterial({ color: c, ...o });
+const M = {
+    post: mat(0x2f6db5), beam: mat(0xe67e22), wood: mat(0xb08850), cargo: mat(0xffffff),
+    floor: mat(0x2b2b3d, { side: THREE.DoubleSide }),
+    wall: mat(0x8899aa, { transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }),
+    green: mat(0x27ae60), dark: mat(0x333333), steel: mat(0x95a5a6)
+};
+const box = new THREE.BoxGeometry(1, 1, 1);
+const CARGO = [0xc8a165, 0xb98b4f, 0xd9b77e, 0xa8c0d8];
+const D = new THREE.Object3D();
+const strHash = (s) => [...String(s)].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) | 0, 7);
+const rnd = (n) => { const v = Math.sin(n * 127.1) * 43758.5453; return v - Math.floor(v); };
 
-function createRack3D(rack) {
-    const group = new THREE.Group();
-    const shelfMat = new THREE.MeshStandardMaterial({ color: 0xe67e22 }); // Màu cam cho mặt kệ
-    const postMat = new THREE.MeshStandardMaterial({ color: 0x34495e }); // Màu xám đậm cho cột trụ
+function inst(material, count) { const m = new THREE.InstancedMesh(box, material, Math.max(count, 1)); m._i = 0; return m; }
+function put(m, x, y, z, sx, sy, sz, color) {
+    D.position.set(x, y, z); D.scale.set(sx, sy, sz); D.updateMatrix();
+    m.setMatrixAt(m._i, D.matrix);
+    if (color !== undefined) m.setColorAt(m._i, new THREE.Color(color));
+    m._i++;
+}
+function mesh(material, x, y, z, sx, sy, sz) {
+    const m = new THREE.Mesh(box, material);
+    m.position.set(x, y, z); m.scale.set(sx, sy, sz);
+    return m;
+}
 
-    const tierSpacing = rack.h / rack.tiers;
-    const shelfThickness = 0.05;
-    const postThickness = 0.1;
+// ================= KỆ 4 TẦNG (cột x hàng x tầng) =================
+// rack.x, rack.z = góc (min) của cụm kệ; trục X = chiều dài kho, Z = chiều rộng kho, Y = chiều cao
+function createRack3D(r) {
+    const g = new THREE.Group();
+    g.userData = { id: r.id };
+    const gap = (r.pitchZ - r.cellZ) / 2;
+    const H = r.tiers * r.tierH + 0.3;
+    const W = r.cols * r.cellX;
+    const seed = strHash(r.id);
+    const posts = inst(M.post, (r.cols + 1) * (r.rows + 1));
+    const beams = inst(M.beam, (r.rows + 1) * r.tiers);
+    const n = r.cols * r.rows * r.tiers;
+    const base = inst(M.wood, n), cargo = inst(M.cargo, n);
 
-    // 1. Tạo các tầng (mặt sàn kệ)
-    for (let i = 0; i < rack.tiers; i++) {
-        const shelfGeo = new THREE.BoxGeometry(rack.l, shelfThickness, rack.w);
-        const shelf = new THREE.Mesh(shelfGeo, shelfMat);
-        shelf.position.y = (i * tierSpacing) + (shelfThickness / 2) + 0.1; 
-        group.add(shelf);
+    for (let j = 0; j <= r.rows; j++) {
+        const z = j * r.pitchZ - gap;
+        for (let c = 0; c <= r.cols; c++) put(posts, c * r.cellX, H / 2, z, 0.08, H, 0.08);
+        for (let t = 0; t < r.tiers; t++) put(beams, W / 2, 0.15 + t * r.tierH, z, W, 0.1, 0.07);
     }
-
-    // 2. Tạo 4 cột trụ
-    const postGeo = new THREE.BoxGeometry(postThickness, rack.h, postThickness);
-    const postPositions = [
-        [-rack.l/2 + postThickness/2, rack.w/2 - postThickness/2], // Góc trái trên
-        [rack.l/2 - postThickness/2, rack.w/2 - postThickness/2],  // Góc phải trên
-        [-rack.l/2 + postThickness/2, -rack.w/2 + postThickness/2], // Góc trái dưới
-        [rack.l/2 - postThickness/2, -rack.w/2 + postThickness/2]   // Góc phải dưới
-    ];
-
-    postPositions.forEach(pos => {
-        const post = new THREE.Mesh(postGeo, postMat);
-        post.position.set(pos[0], rack.h / 2, pos[1]);
-        group.add(post);
-    });
-
-    group.position.set(rack.x, 0, rack.z);
-    group.userData = { id: rack.id }; // Lưu ID để xác định lúc kéo thả
-    return group;
+    for (let j = 0; j < r.rows; j++) for (let c = 0; c < r.cols; c++) for (let t = 0; t < r.tiers; t++) {
+        const k = seed + j * 131 + c * 17 + t * 5;
+        if (rnd(k) > 0.8) continue; // ~80% ô có pallet
+        const x = (c + 0.5) * r.cellX, z = j * r.pitchZ + r.cellZ / 2, y = 0.2 + t * r.tierH;
+        put(base, x, y + 0.07, z, r.cellX - 0.06, 0.14, r.cellZ);
+        put(cargo, x, y + 0.66, z, r.cellX - 0.16, 1.04, r.cellZ - 0.1, CARGO[Math.floor(rnd(k + 1) * CARGO.length)]);
+    }
+    [posts, beams, base, cargo].forEach((m) => { m.count = m._i; m.instanceMatrix.needsUpdate = true; g.add(m); });
+    g.position.set(r.x, 0, r.z);
+    return g;
 }
 
 function updateRacks() {
-    // Xóa cụm kệ cũ trên Scene
-    while (rackGroup.children.length > 0) {
-        rackGroup.remove(rackGroup.children[0]);
-    }
-    rackMeshes = [];
+    rackGroup.children.forEach((g) => g.traverse((o) => o.isInstancedMesh && o.dispose()));
+    rackGroup.clear();
+    const meshes = racksData.map((r) => { const g = createRack3D(r); rackGroup.add(g); return g; });
 
-    // Vẽ kệ mới
-    racksData.forEach(rack => {
-        const rackMesh = createRack3D(rack);
-        rackGroup.add(rackMesh);
-        rackMeshes.push(rackMesh);
+    if (dragControls) dragControls.dispose();
+    dragControls = new DragControls(meshes, camera, renderer.domElement);
+    dragControls.transformGroup = true;
+    dragControls.enabled = $('chk-drag').checked;
+    dragControls.addEventListener('dragstart', () => { controls.enabled = false; });
+    dragControls.addEventListener('drag', (e) => {
+        e.object.position.y = 0;
+        const r = racksData.find((x) => x.id === e.object.userData.id);
+        if (r) { r.x = e.object.position.x; r.z = e.object.position.z; }
     });
-
-    // Reset công cụ DragControls
-    if (dragControls) dragControls.dispose(); 
-    dragControls = new DragControls(rackMeshes, camera, renderer.domElement);
-    dragControls.transformGroup = true; // Kéo toàn bộ cụm Group thay vì từng thanh gỗ nhỏ
-
-    dragControls.addEventListener('dragstart', function (event) {
-        controls.enabled = false; // Tắt tính năng xoay camera khi đang kéo kệ
-        event.object.children.forEach(child => {
-            if(child.material.emissive) child.material.emissive.set(0x333333); // Sáng lên khi được chọn
-        });
+    dragControls.addEventListener('dragend', () => {
+        controls.enabled = true;
+        socket.emit('set_racks', racksData);
+        renderRackListUI();
     });
-
-    dragControls.addEventListener('drag', function (event) {
-        event.object.position.y = 0; // Giữ kệ luôn nằm sát mặt đất (khóa trục Y)
-        
-        // Lưu vị trí đang kéo vào mảng Data tạm
-        const index = racksData.findIndex(r => r.id === event.object.userData.id);
-        if(index !== -1) {
-            racksData[index].x = event.object.position.x;
-            racksData[index].z = event.object.position.z;
-        }
-    });
-
-    dragControls.addEventListener('dragend', function (event) {
-        controls.enabled = true; // Bật lại xoay camera
-        event.object.children.forEach(child => {
-            if(child.material.emissive) child.material.emissive.set(0x000000); // Tắt sáng
-        });
-        
-        // Gửi tọa độ mới lên Server và cập nhật UI
-        socket.emit('set_racks', racksData); 
-        renderRackListUI(); 
-    });
-
     renderRackListUI();
 }
 
-// --- 3D ROOM LOGIC ---
-function createRoom3D(length, width, height) {
-    if (roomMesh) scene.remove(roomMesh);
-    const geometry = new THREE.BoxGeometry(length, height, width);
-    const material = new THREE.MeshStandardMaterial({
-        color: 0xaaaaaa,
-        transparent: true,
-        opacity: 0.1,
-        side: THREE.DoubleSide
+// ================= PHÒNG, TƯỜNG, THIẾT BỊ (từ layout.json) =================
+function forklift(f) {
+    const g = new THREE.Group();
+    g.add(mesh(M.green, 0, 0.75, -0.3, 1.1, 1.1, 1.6));
+    g.add(mesh(M.dark, 0, 1.3, 0.55, 0.9, 2.6, 0.12));
+    g.add(mesh(M.steel, -0.3, 0.12, 1.15, 0.12, 0.06, 1.2));
+    g.add(mesh(M.steel, 0.3, 0.12, 1.15, 0.12, 0.06, 1.2));
+    g.position.set(f.x, 0, f.z); g.rotation.y = f.rot;
+    return g;
+}
+
+function buildStatic() {
+    if (staticGroup) {
+        scene.remove(staticGroup);
+        staticGroup.traverse((o) => o.geometry && o.geometry !== box && o.geometry.dispose());
+    }
+    if (!layout) return;
+    staticGroup = new THREE.Group();
+    const H = roomConfig.height;
+
+    const floorGeo = new THREE.ShapeGeometry(new THREE.Shape(layout.floor.map(([x, z]) => new THREE.Vector2(x, z))));
+    floorGeo.rotateX(Math.PI / 2);
+    staticGroup.add(new THREE.Mesh(floorGeo, M.floor));
+
+    layout.walls.forEach(([x1, z1, x2, z2]) => {
+        const len = Math.hypot(x2 - x1, z2 - z1);
+        const w = mesh(M.wall, (x1 + x2) / 2, H / 2, (z1 + z2) / 2, len, H, 0.2);
+        w.rotation.y = -Math.atan2(z2 - z1, x2 - x1);
+        staticGroup.add(w);
+        const e = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(len, H, 0.2)),
+            new THREE.LineBasicMaterial({ color: 0xe94560 }));
+        e.position.copy(w.position); e.rotation.copy(w.rotation);
+        staticGroup.add(e);
     });
-    roomMesh = new THREE.Mesh(geometry, material);
 
-    const edges = new THREE.EdgesGeometry(geometry);
-    const lineMaterial = new THREE.LineBasicMaterial({ color: 0xe94560 });
-    const wireframe = new THREE.LineSegments(edges, lineMaterial);
-    roomMesh.add(wireframe);
-
-    roomMesh.position.set(length / 2, height / 2, width / 2);
-    scene.add(roomMesh);
-    roomConfig = { length, width, height };
-}
-
-// --- KEYBOARD CONTROLS (Camera) ---
-const keyStates = {};
-window.addEventListener('keydown', (event) => { keyStates[event.key.toLowerCase()] = true; });
-window.addEventListener('keyup', (event) => { keyStates[event.key.toLowerCase()] = false; });
-
-function updateCameraMovement() {
-    const moveSpeed = 5.0;
-    const forward = new THREE.Vector3();
-    camera.getWorldDirection(forward);
-    const forwardOnPlane = new THREE.Vector3(forward.x, 0, forward.z).normalize();
-    const right = new THREE.Vector3().crossVectors(camera.up, forward).normalize();
-
-    if (keyStates['w']) {
-        const moveVector = forwardOnPlane.clone().multiplyScalar(moveSpeed * 0.1);
-        camera.position.add(moveVector);
-        controls.target.add(moveVector);
-    }
-    if (keyStates['s']) {
-        const moveVector = forwardOnPlane.clone().multiplyScalar(moveSpeed * 0.1);
-        camera.position.sub(moveVector);
-        controls.target.sub(moveVector);
-    }
-    if (keyStates['d']) {
-        const moveVector = right.clone().multiplyScalar(moveSpeed * 0.1);
-        camera.position.sub(moveVector);
-        controls.target.sub(moveVector);
-    }
-    if (keyStates['a']) {
-        const moveVector = right.clone().multiplyScalar(moveSpeed * 0.1);
-        camera.position.add(moveVector);
-        controls.target.add(moveVector);
-    }
-}
-
-// --- GIAO DIỆN UI ---
-document.getElementById('inpL').addEventListener('change', updateRoom);
-document.getElementById('inpW').addEventListener('change', updateRoom);
-document.getElementById('inpH').addEventListener('change', updateRoom);
-
-function updateRoom() {
-    const l = parseFloat(document.getElementById('inpL').value) || 10;
-    const w = parseFloat(document.getElementById('inpW').value) || 8;
-    const h = parseFloat(document.getElementById('inpH').value) || 4;
-    createRoom3D(l, w, h);
-    socket.emit('update_room_config', { length: l, width: w, height: h });
-}
-
-// Giao diện Thêm kệ hàng
-const btnAddRack = document.getElementById('btn-add-rack');
-if(btnAddRack) {
-    btnAddRack.addEventListener('click', () => {
-        const l = parseFloat(document.getElementById('rackL').value) || 2;
-        const w = parseFloat(document.getElementById('rackW').value) || 1;
-        const h = parseFloat(document.getElementById('rackH').value) || 3;
-        const tiers = parseInt(document.getElementById('rackTiers').value) || 4;
-
-        const newRack = {
-            id: Date.now().toString(),
-            l, w, h, tiers,
-            x: roomConfig.length / 2, 
-            z: roomConfig.width / 2
-        };
-
-        racksData.push(newRack);
-        updateRacks();
-        socket.emit('set_racks', racksData);
-        
-        // Tự động kéo dài khung collapsible
-        const content = document.querySelector('#racks-section .collapsible-content');
-        if(content && content.style.maxHeight) {
-            content.style.maxHeight = content.scrollHeight + "px";
-        }
+    layout.extras.forEach((e) => {
+        const m = mat(e.c, e.o ? { transparent: true, opacity: e.o } : {});
+        staticGroup.add(mesh(m, e.x + e.w / 2, e.h / 2, e.z + e.d / 2, e.w, e.h, e.d));
     });
+    layout.forklifts.forEach((f) => staticGroup.add(forklift(f)));
+    scene.add(staticGroup);
 }
 
+// ================= DANH SÁCH KỆ (UI) =================
 function renderRackListUI() {
-    const rackListEl = document.getElementById('rack-list');
-    if(!rackListEl) return;
-    
-    rackListEl.innerHTML = '';
-    racksData.forEach((rack, index) => {
+    const list = $('rack-list');
+    list.innerHTML = '';
+    let cells = 0;
+    racksData.forEach((r, i) => {
+        cells += r.cols * r.rows * r.tiers;
         const item = document.createElement('div');
-        item.style.cssText = "background: var(--bg-dark); padding: 8px; margin-bottom: 5px; border-radius: 4px; font-size: 0.85em;";
-        item.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <b>Kệ ${index + 1} (${rack.tiers} tầng)</b>
-                <button class="btn-remove-rack" data-id="${rack.id}" style="background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer; padding: 2px 6px;">Xóa</button>
-            </div>
-            <div style="color: var(--secondary); margin-top: 3px;">
-                KT: ${rack.l}x${rack.w}x${rack.h} | Tọa độ: X:${rack.x.toFixed(1)}, Z:${rack.z.toFixed(1)}
-            </div>
-        `;
-        rackListEl.appendChild(item);
+        item.style.cssText = 'background:var(--bg-dark);padding:8px;margin-bottom:5px;border-radius:4px;font-size:.85em';
+        const head = document.createElement('div');
+        head.style.cssText = 'display:flex;justify-content:space-between;align-items:center';
+        const title = document.createElement('b');
+        title.textContent = `Kệ ${i + 1}: ${r.cols}×${r.rows}×${r.tiers} tầng`;
+        const del = document.createElement('button');
+        del.textContent = 'Xóa';
+        del.style.cssText = 'background:#dc3545;color:#fff;border:none;border-radius:3px;cursor:pointer;padding:2px 6px';
+        del.onclick = () => { racksData = racksData.filter((x) => x.id !== r.id); updateRacks(); socket.emit('set_racks', racksData); };
+        head.append(title, del);
+        const info = document.createElement('div');
+        info.style.cssText = 'color:var(--secondary);margin-top:3px';
+        info.textContent = `Cao ${(r.tiers * r.tierH).toFixed(1)}m | X:${r.x.toFixed(2)} Z:${r.z.toFixed(2)}`;
+        item.append(head, info);
+        list.appendChild(item);
     });
-
-    document.querySelectorAll('.btn-remove-rack').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const id = e.target.getAttribute('data-id');
-            racksData = racksData.filter(r => r.id !== id);
-            updateRacks();
-            socket.emit('set_racks', racksData);
-        });
-    });
+    $('rack-summary').textContent = `${racksData.length} cụm kệ · ${cells} vị trí pallet`;
 }
 
-// --- SOCKET LISTENERS ---
+// ================= SỰ KIỆN UI =================
+$('inpL').readOnly = true; $('inpW').readOnly = true; // L, W lấy theo layout
+$('inpH').addEventListener('change', () => {
+    const h = parseFloat($('inpH').value) || 8;
+    roomConfig = { ...roomConfig, height: h };
+    buildStatic();
+    socket.emit('update_room_config', roomConfig);
+});
+$('chk-drag').addEventListener('change', (e) => { if (dragControls) dragControls.enabled = e.target.checked; });
+$('btn-add-rack').addEventListener('click', () => {
+    racksData.push({
+        id: 'rack-' + Date.now(),
+        x: 2, z: 2,
+        cols: parseInt($('rackC').value) || 4,
+        rows: parseInt($('rackR').value) || 10,
+        tiers: parseInt($('rackT').value) || 4,
+        tierH: parseFloat($('rackTH').value) || 1.5,
+        cellX: 1.22, cellZ: 1.17, pitchZ: 1.55
+    });
+    updateRacks();
+    socket.emit('set_racks', racksData);
+});
+$('btn-load-layout').addEventListener('click', () => {
+    if (!layout) return;
+    racksData = JSON.parse(JSON.stringify(layout.racks));
+    updateRacks();
+    socket.emit('set_racks', racksData);
+});
+
+// ================= SOCKET =================
 socket.on('room_config_update', (cfg) => {
     roomConfig = cfg;
-    createRoom3D(cfg.length, cfg.width, cfg.height);
-    document.getElementById('inpL').value = cfg.length;
-    document.getElementById('inpW').value = cfg.width;
-    document.getElementById('inpH').value = cfg.height;
+    $('inpL').value = cfg.length; $('inpW').value = cfg.width; $('inpH').value = cfg.height;
+    buildStatic();
 });
+socket.on('racks_updated', (data) => { racksData = data; updateRacks(); });
 
-socket.on('racks_updated', (data) => {
-    racksData = data;
-    updateRacks();
-});
+fetch('layout.json').then((r) => r.json()).then((l) => { layout = l; buildStatic(); });
 
-// --- ANIMATION LOOP & RESIZE ---
-function animate() {
+// ================= CAMERA PHÍM W/A/S/D =================
+const keys = {};
+window.addEventListener('keydown', (e) => { if (e.target.tagName !== 'INPUT') keys[e.key.toLowerCase()] = true; });
+window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+function moveCamera() {
+    const fwd = new THREE.Vector3(); camera.getWorldDirection(fwd);
+    fwd.y = 0; fwd.normalize();
+    const right = new THREE.Vector3().crossVectors(fwd, camera.up).normalize();
+    const v = new THREE.Vector3();
+    const s = 0.25;
+    if (keys.w) v.addScaledVector(fwd, s);
+    if (keys.s) v.addScaledVector(fwd, -s);
+    if (keys.d) v.addScaledVector(right, s);
+    if (keys.a) v.addScaledVector(right, -s);
+    camera.position.add(v); controls.target.add(v);
+}
+
+// ================= RENDER LOOP & RESIZE =================
+function resize() {
+    const { clientWidth: w, clientHeight: h } = viewport;
+    camera.aspect = w / h; camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+    axisCamera.aspect = 1; axisCamera.updateProjectionMatrix();
+    axisRenderer.setSize(axisContainer.clientWidth, axisContainer.clientHeight);
+}
+window.addEventListener('resize', resize);
+resize();
+
+(function animate() {
     requestAnimationFrame(animate);
-    updateCameraMovement();
+    moveCamera();
     controls.update();
     renderer.render(scene, camera);
     axisCamera.quaternion.copy(camera.quaternion);
     axisRenderer.render(axisScene, axisCamera);
-}
-animate();
+})();
 
-const viewport = document.getElementById('viewport');
-window.addEventListener('resize', () => {
-    const { clientWidth, clientHeight } = viewport;
-    camera.aspect = clientWidth / clientHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(clientWidth, clientHeight);
-
-    axisCamera.aspect = axisContainer.clientWidth / axisContainer.clientHeight;
-    axisCamera.updateProjectionMatrix();
-    axisRenderer.setSize(axisContainer.clientWidth, axisContainer.clientHeight);
-});
-
-// Initial setup
-createRoom3D(roomConfig.length, roomConfig.width, roomConfig.height);
-window.dispatchEvent(new Event('resize'));
-
-// --- BẢNG ĐIỀU KHIỂN & FLOATING PANEL ---
-const collapsibles = document.querySelectorAll('.collapsible');
-collapsibles.forEach(coll => {
-    coll.addEventListener('click', () => {
-        coll.classList.toggle('active');
-        const content = coll.nextElementSibling;
-        if (content.style.maxHeight && content.style.maxHeight !== 'fit-content') {
-            content.style.maxHeight = null;
-        } else {
-            content.style.maxHeight = content.scrollHeight + "px";
-        }
-    });
-});
-
-const settingsBtn = document.getElementById('btn-settings');
-const closePanelBtn = document.getElementById('btn-close-panel');
-const floatingPanel = document.getElementById('floating-panel');
-const panelHeader = document.querySelector('.panel-header');
-
-settingsBtn.addEventListener('click', () => {
-    floatingPanel.style.display = 'flex';
-});
-
-closePanelBtn.addEventListener('click', () => {
-    floatingPanel.style.display = 'none';
-});
-
-let isDragging = false;
-let startX, startY, initialX, initialY;
-
-panelHeader.addEventListener('mousedown', (e) => {
-    isDragging = true;
-    startX = e.clientX;
-    startY = e.clientY;
-    initialX = floatingPanel.offsetLeft;
-    initialY = floatingPanel.offsetTop;
-    panelHeader.style.cursor = 'grabbing';
-});
-
-document.addEventListener('mousemove', (e) => {
-    if (!isDragging) return;
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
-    floatingPanel.style.left = (initialX + dx) + 'px';
-    floatingPanel.style.top = (initialY + dy) + 'px';
-});
-
-document.addEventListener('mouseup', () => {
-    isDragging = false;
-    panelHeader.style.cursor = 'grab';
-});
+// ================= PANEL NỔI =================
+document.querySelectorAll('.collapsible').forEach((c) => c.addEventListener('click', () => {
+    c.classList.toggle('active');
+    const content = c.nextElementSibling;
+    content.style.maxHeight = content.style.maxHeight === 'none' ? '0' : 'none';
+}));
+const panel = $('floating-panel'), header = document.querySelector('.panel-header');
+$('btn-settings').addEventListener('click', () => { panel.style.display = 'flex'; });
+$('btn-close-panel').addEventListener('click', () => { panel.style.display = 'none'; });
+let dragging = false, sx, sy, ix, iy;
+header.addEventListener('mousedown', (e) => { dragging = true; sx = e.clientX; sy = e.clientY; ix = panel.offsetLeft; iy = panel.offsetTop; });
+document.addEventListener('mousemove', (e) => { if (dragging) { panel.style.left = ix + e.clientX - sx + 'px'; panel.style.top = iy + e.clientY - sy + 'px'; } });
+document.addEventListener('mouseup', () => { dragging = false; });
