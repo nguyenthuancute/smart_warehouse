@@ -6,7 +6,7 @@ const mqtt = require('mqtt');
 const bodyParser = require('body-parser');
 const layout = require('./public/layout.json');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
 
 const app = express();
 const server = http.createServer(app);
@@ -69,6 +69,13 @@ app.post('/api/analyze-layout', async (req, res) => {
         if (!process.env.GEMINI_API_KEY) {
             return res.status(500).json({ success: false, message: "Thiếu GEMINI_API_KEY trên server." });
         }
+
+        // THÊM VÀO ĐÂY: Khởi tạo genAI an toàn sau khi đã chắc chắn có Key
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+        // Cấu hình Model với Structured Output để ép khuôn JSON an toàn
+        const model = genAI.getGenerativeModel({
+            // ... (giữ nguyên phần cấu hình model phía dưới của bạn) ...
 
         // Cấu hình Model với Structured Output để ép khuôn JSON an toàn
         const model = genAI.getGenerativeModel({
