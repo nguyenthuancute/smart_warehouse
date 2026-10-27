@@ -251,9 +251,14 @@ $('btn-load-layout').addEventListener('click', () => {
     if (!layout) return;
     racksData = JSON.parse(JSON.stringify(layout.racks));
     updateRacks();
-    socket.emit('set_racks', racksData);
+    .emit('set_racks', racksData);
 });
-
+// ==== DÁN ĐOẠN CODE AI VÀO ĐÂY ====
+document.getElementById('btnAiGenerate').addEventListener('click', async () => {
+    const fileInput = document.getElementById('layoutUpload');
+    const statusText = document.getElementById('aiStatus');
+    // ... (phần nội dung hàm tải ảnh và fetch /api/analyze-layout) ...
+});
 // ================= SOCKET =================
 socket.on('room_config_update', (cfg) => {
     roomConfig = cfg;
