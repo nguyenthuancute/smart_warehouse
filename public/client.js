@@ -251,13 +251,52 @@ $('btn-load-layout').addEventListener('click', () => {
     if (!layout) return;
     racksData = JSON.parse(JSON.stringify(layout.racks));
     updateRacks();
-    .emit('set_racks', racksData);
+    socket.emit('set_racks', racksData); // <-- Đã sửa lỗi thiếu chữ 'socket'
 });
+
 // ==== DÁN ĐOẠN CODE AI VÀO ĐÂY ====
 document.getElementById('btnAiGenerate').addEventListener('click', async () => {
     const fileInput = document.getElementById('layoutUpload');
     const statusText = document.getElementById('aiStatus');
-    // ... (phần nội dung hàm tải ảnh và fetch /api/analyze-layout) ...
+    
+    if (!fileInput.files[0]) {
+        alert("Vui lòng chọn ảnh bản vẽ layout kho trước.");
+        return;
+    }
+
+    statusText.innerText = "⏳ AI đang bóc tách tọa độ...";
+
+    const reader = new FileReader();
+    reader.readAsDataURL(fileInput.files[0]);
+    reader.onload = async () => {
+        const base64Image = reader.result;
+        const realWidth = typeof roomConfig !== 'undefined' ? roomConfig.width : 20.4; 
+        const realLength = typeof roomConfig !== 'undefined' ? roomConfig.length : 55.9;
+
+        try {
+            const response = await fetch('/api/analyze-layout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ imageBase64: base64Image, realWidth, realLength })
+            });
+
+            const data = await response.json();
+            
+            if (data.success) {
+                statusText.innerText = "✅ Phân tích xong! Kéo thả để tinh chỉnh.";
+                racksData = data.racks; 
+                updateRacks(); 
+                if (typeof socket !== 'undefined') {
+                    socket.emit('set_racks', racksData);
+                }
+            } else {
+                statusText.innerText = "❌ Lỗi AI: " + data.message;
+            }
+        } catch (err) {
+            statusText.innerText = "❌ Lỗi kết nối đến Backend.";
+            console.error(err);
+        }
+    };
 });
 // ================= SOCKET =================
 socket.on('room_config_update', (cfg) => {
