@@ -7,11 +7,12 @@ const bodyParser = require('body-parser');
 const layout = require('./public/layout.json');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 app.use(express.static('public'));
+
+// Cấu hình giới hạn dung lượng để nhận ảnh Base64 từ AI
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
@@ -62,6 +63,8 @@ if (process.env.MQTT_HOST) {
 setInterval(() => {
     if (Object.keys(tagsData).length > 0) io.emit('tags_update', tagsData);
 }, 33);
+
+// --- API TÍCH HỢP GEMINI AI ---
 app.post('/api/analyze-layout', async (req, res) => {
     try {
         const { imageBase64, realWidth, realLength } = req.body;
@@ -70,14 +73,10 @@ app.post('/api/analyze-layout', async (req, res) => {
             return res.status(500).json({ success: false, message: "Thiếu GEMINI_API_KEY trên server." });
         }
 
-        // THÊM VÀO ĐÂY: Khởi tạo genAI an toàn sau khi đã chắc chắn có Key
+        // Khởi tạo genAI an toàn bên trong API
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-        // Cấu hình Model với Structured Output để ép khuôn JSON an toàn
-        const model = genAI.getGenerativeModel({
-            // ... (giữ nguyên phần cấu hình model phía dưới của bạn) ...
-
-        // Cấu hình Model với Structured Output để ép khuôn JSON an toàn
+        // Cấu hình Model với Structured Output để ép khuôn JSON
         const model = genAI.getGenerativeModel({
             model: "gemini-1.5-pro",
             systemInstruction: "Bạn là hệ thống thị giác máy tính cho mặt bằng kho 4-Way Shuttle. Hãy nhận diện các cụm kệ, xác định tâm theo tỷ lệ phần trăm (0.0 đến 1.0) tính từ góc trên-trái của bức ảnh, và đếm số cột/hàng. Chỉ trả về JSON.",
@@ -117,7 +116,7 @@ app.post('/api/analyze-layout', async (req, res) => {
 
         const aiData = JSON.parse(result.response.text());
 
-        // Chuyển đổi tỷ lệ phần trăm thành tọa độ gốc hệ Three.js (0,0 ở giữa mặt phẳng sàn)
+        // Chuyển đổi tỷ lệ phần trăm thành tọa độ gốc hệ Three.js
         const finalRacks = aiData.racks.map((rack, index) => ({
             id: `rack_ai_${index + 1}`,
             cols: rack.cols,
@@ -134,5 +133,6 @@ app.post('/api/analyze-layout', async (req, res) => {
         res.status(500).json({ success: false, message: "Lỗi phân tích bản vẽ: " + error.message });
     }
 });
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server running on port ${PORT}`));
