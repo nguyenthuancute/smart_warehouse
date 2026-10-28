@@ -69,29 +69,30 @@ function mesh(material, x, y, z, sx, sy, sz) {
     return m;
 }
 
-// ================= KỆ 4 TẦNG (cột x hàng x tầng) =================
-// rack.x, rack.z = góc (min) của cụm kệ; trục X = chiều dài kho, Z = chiều rộng kho, Y = chiều cao
+// ================= KỆ 4 TẦNG =================
 function createRack3D(r) {
     const g = new THREE.Group();
     g.userData = { id: r.id };
     const gap = (r.pitchZ - r.cellZ) / 2;
-    const H = r.tiers * r.tierH + 0.3;
+    const tiers = r.tiers || 4;
+    const tierH = r.tierH || 1.5;
+    const H = tiers * tierH + 0.3;
     const W = r.cols * r.cellX;
     const seed = strHash(r.id);
     const posts = inst(M.post, (r.cols + 1) * (r.rows + 1));
-    const beams = inst(M.beam, (r.rows + 1) * r.tiers);
-    const n = r.cols * r.rows * r.tiers;
+    const beams = inst(M.beam, (r.rows + 1) * tiers);
+    const n = r.cols * r.rows * tiers;
     const base = inst(M.wood, n), cargo = inst(M.cargo, n);
 
     for (let j = 0; j <= r.rows; j++) {
         const z = j * r.pitchZ - gap;
         for (let c = 0; c <= r.cols; c++) put(posts, c * r.cellX, H / 2, z, 0.08, H, 0.08);
-        for (let t = 0; t < r.tiers; t++) put(beams, W / 2, 0.15 + t * r.tierH, z, W, 0.1, 0.07);
+        for (let t = 0; t < tiers; t++) put(beams, W / 2, 0.15 + t * tierH, z, W, 0.1, 0.07);
     }
-    for (let j = 0; j < r.rows; j++) for (let c = 0; c < r.cols; c++) for (let t = 0; t < r.tiers; t++) {
+    for (let j = 0; j < r.rows; j++) for (let c = 0; c < r.cols; c++) for (let t = 0; t < tiers; t++) {
         const k = seed + j * 131 + c * 17 + t * 5;
-        if (rnd(k) > 0.8) continue; // ~80% ô có pallet
-        const x = (c + 0.5) * r.cellX, z = j * r.pitchZ + r.cellZ / 2, y = 0.2 + t * r.tierH;
+        if (rnd(k) > 0.8) continue;
+        const x = (c + 0.5) * r.cellX, z = j * r.pitchZ + r.cellZ / 2, y = 0.2 + t * tierH;
         put(base, x, y + 0.07, z, r.cellX - 0.06, 0.14, r.cellZ);
         put(cargo, x, y + 0.66, z, r.cellX - 0.16, 1.04, r.cellZ - 0.1, CARGO[Math.floor(rnd(k + 1) * CARGO.length)]);
     }
@@ -104,21 +105,10 @@ function updateRacks() {
     rackGroup.children.forEach((g) => g.traverse((o) => o.isInstancedMesh && o.dispose()));
     rackGroup.clear();
     racksData.forEach((r) => rackGroup.add(createRack3D(r)));
-
     renderRackListUI();
 }
 
-// ================= PHÒNG, TƯỜNG, THIẾT BỊ (từ layout.json) =================
-function forklift(f) {
-    const g = new THREE.Group();
-    g.add(mesh(M.green, 0, 0.75, -0.3, 1.1, 1.1, 1.6));
-    g.add(mesh(M.dark, 0, 1.3, 0.55, 0.9, 2.6, 0.12));
-    g.add(mesh(M.steel, -0.3, 0.12, 1.15, 0.12, 0.06, 1.2));
-    g.add(mesh(M.steel, 0.3, 0.12, 1.15, 0.12, 0.06, 1.2));
-    g.position.set(f.x, 0, f.z); g.rotation.y = f.rot;
-    return g;
-}
-
+// ================= PHÒNG, TƯỜNG (ĐÃ XÓA XE NÂNG VÀ THÙNG HÀNG PHỤ) =================
 function buildStatic() {
     if (staticGroup) {
         scene.remove(staticGroup);
@@ -143,19 +133,25 @@ function buildStatic() {
         staticGroup.add(e);
     });
 
+    scene.add(staticGroup);
+}
+
 // ================= DANH SÁCH KỆ (UI) =================
 function renderRackListUI() {
     const list = $('rack-list');
+    if (!list) return;
     list.innerHTML = '';
     let cells = 0;
     racksData.forEach((r, i) => {
-        cells += r.cols * r.rows * r.tiers;
+        const tiers = r.tiers || 4;
+        const tierH = r.tierH || 1.5;
+        cells += r.cols * r.rows * tiers;
         const item = document.createElement('div');
         item.style.cssText = 'background:var(--bg-dark);padding:8px;margin-bottom:5px;border-radius:4px;font-size:.85em';
         const head = document.createElement('div');
         head.style.cssText = 'display:flex;justify-content:space-between;align-items:center';
         const title = document.createElement('b');
-        title.textContent = `Kệ ${i + 1}: ${r.cols}×${r.rows}×${r.tiers} tầng`;
+        title.textContent = `Kệ ${i + 1}: ${r.cols}×${r.rows}×${tiers} tầng`;
         const del = document.createElement('button');
         del.textContent = 'Xóa';
         del.style.cssText = 'background:#dc3545;color:#fff;border:none;border-radius:3px;cursor:pointer;padding:2px 6px';
@@ -163,15 +159,14 @@ function renderRackListUI() {
         head.append(title, del);
         const info = document.createElement('div');
         info.style.cssText = 'color:var(--secondary);margin-top:3px';
-        info.textContent = `Cao ${(r.tiers * r.tierH).toFixed(1)}m | X:${r.x.toFixed(2)} Z:${r.z.toFixed(2)}`;
+        info.textContent = `Cao ${(tiers * tierH).toFixed(1)}m | X:${r.x.toFixed(2)} Z:${r.z.toFixed(2)}`;
         item.append(head, info);
         list.appendChild(item);
     });
-    $('rack-summary').textContent = `${racksData.length} cụm kệ · ${cells} vị trí pallet`;
+    if ($('rack-summary')) $('rack-summary').textContent = `${racksData.length} cụm kệ · ${cells} vị trí pallet`;
 }
 
-
-// ================= KÉO KỆ (raycaster, chọn đúng kệ được bấm) =================
+// ================= KÉO KỆ =================
 const raycaster = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -182,9 +177,8 @@ function setRay(e) {
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     raycaster.setFromCamera(ndc, camera);
 }
-// capture=true để chạy trước OrbitControls
 renderer.domElement.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0 || !$('chk-drag').checked) return;
+    if (e.button !== 0 || !$('chk-drag') || !$('chk-drag').checked) return;
     setRay(e);
     const hit = raycaster.intersectObjects(rackGroup.children, true)[0];
     if (!hit) return;
@@ -218,90 +212,100 @@ window.addEventListener('pointerup', () => {
 
 // ================= SỰ KIỆN UI =================
 const clamp = (v, lo, hi, def) => (Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : def);
-$('inpH').addEventListener('change', () => {
-    const h = clamp(parseFloat($('inpH').value), 3, 30, 8);
-    $('inpH').value = h;
-    roomConfig = { ...roomConfig, height: h };
-    buildStatic();
-    socket.emit('update_room_config', roomConfig);
-});
-$('chk-drag').addEventListener('change', (e) => { renderer.domElement.style.cursor = e.target.checked ? 'move' : ''; });
-$('btn-add-rack').addEventListener('click', () => {
-    racksData.push({
-        id: 'rack-' + Date.now(),
-        x: 2, z: 2,
-        cols: clamp(parseInt($('rackC').value), 1, 12, 4),
-        rows: clamp(parseInt($('rackR').value), 1, 30, 10),
-        tiers: clamp(parseInt($('rackT').value), 1, 10, 4),
-        tierH: clamp(parseFloat($('rackTH').value), 0.5, 3, 1.5),
-        cellX: 1.22, cellZ: 1.17, pitchZ: 1.55
+if ($('inpH')) {
+    $('inpH').addEventListener('change', () => {
+        const h = clamp(parseFloat($('inpH').value), 3, 30, 8);
+        $('inpH').value = h;
+        roomConfig = { ...roomConfig, height: h };
+        buildStatic();
+        socket.emit('update_room_config', roomConfig);
     });
-    updateRacks();
-    socket.emit('set_racks', racksData);
-});
-$('btn-load-layout').addEventListener('click', () => {
-    if (!layout) return;
-    racksData = JSON.parse(JSON.stringify(layout.racks));
-    updateRacks();
-    socket.emit('set_racks', racksData); // <-- Đã sửa lỗi thiếu chữ 'socket'
-});
+}
+if ($('chk-drag')) $('chk-drag').addEventListener('change', (e) => { renderer.domElement.style.cursor = e.target.checked ? 'move' : ''; });
+if ($('btn-add-rack')) {
+    $('btn-add-rack').addEventListener('click', () => {
+        racksData.push({
+            id: 'rack-' + Date.now(),
+            x: 2, z: 2,
+            cols: clamp(parseInt($('rackC').value), 1, 12, 4),
+            rows: clamp(parseInt($('rackR').value), 1, 30, 10),
+            tiers: clamp(parseInt($('rackT').value), 1, 10, 4),
+            tierH: clamp(parseFloat($('rackTH').value), 0.5, 3, 1.5),
+            cellX: 1.22, cellZ: 1.17, pitchZ: 1.55
+        });
+        updateRacks();
+        socket.emit('set_racks', racksData);
+    });
+}
+if ($('btn-load-layout')) {
+    $('btn-load-layout').addEventListener('click', () => {
+        if (!layout) return;
+        racksData = JSON.parse(JSON.stringify(layout.racks));
+        updateRacks();
+        socket.emit('set_racks', racksData);
+    });
+}
 
-// ==== DÁN ĐOẠN CODE AI VÀO ĐÂY ====
-document.getElementById('btnAiGenerate').addEventListener('click', async () => {
-    const fileInput = document.getElementById('layoutUpload');
-    const statusText = document.getElementById('aiStatus');
-    
-    if (!fileInput.files[0]) {
-        alert("Vui lòng chọn ảnh bản vẽ layout kho trước.");
-        return;
-    }
-
-    statusText.innerText = "⏳ AI đang bóc tách tọa độ...";
-
-    // Lấy kích thước kho thực tế từ ô nhập liệu giao diện
-    const realLength = parseFloat($('inpL') ? $('inpL').value : roomConfig.length) || 55.9;
-    const realWidth = parseFloat($('inpW') ? $('inpW').value : roomConfig.width) || 20.4;
-    const realHeight = parseFloat($('inpH') ? $('inpH').value : roomConfig.height) || 8;
-
-    const reader = new FileReader();
-    reader.readAsDataURL(fileInput.files[0]);
-    reader.onload = async () => {
-        const base64Image = reader.result;
-
-        try {
-            const response = await fetch('/api/analyze-layout', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ imageBase64: base64Image, realWidth, realLength })
-            });
-
-            const data = await response.json();
-            
-            if (data.success) {
-                statusText.innerText = "✅ Phân tích xong!";
-                
-                // Cập nhật cấu hình kho theo kích thước đang chọn
-                roomConfig = { length: realLength, width: realWidth, height: realHeight };
-                buildStatic(); // Vẽ lại sàn và tường kho chuẩn
-                socket.emit('update_room_config', roomConfig);
-
-                // Nạp dữ liệu kệ mới từ AI
-                racksData = data.racks; 
-                updateRacks(); 
-                socket.emit('set_racks', racksData);
-            } else {
-                statusText.innerText = "❌ Lỗi AI: " + data.message;
-            }
-        } catch (err) {
-            statusText.innerText = "❌ Lỗi kết nối đến Backend.";
-            console.error(err);
+// ================= AI PHÂN TÍCH LAYOUT =================
+const btnAi = document.getElementById('btnAiGenerate');
+if (btnAi) {
+    btnAi.addEventListener('click', async () => {
+        const fileInput = document.getElementById('layoutUpload');
+        const statusText = document.getElementById('aiStatus');
+        
+        if (!fileInput || !fileInput.files[0]) {
+            alert("Vui lòng chọn ảnh bản vẽ layout kho trước.");
+            return;
         }
-    };
-});
+
+        if (statusText) statusText.innerText = "⏳ AI đang bóc tách tọa độ...";
+
+        const inpL = $('inpL'), inpW = $('inpW'), inpH = $('inpH');
+        const realLength = (inpL && parseFloat(inpL.value)) || roomConfig.length || 55.9;
+        const realWidth = (inpW && parseFloat(inpW.value)) || roomConfig.width || 20.4;
+        const realHeight = (inpH && parseFloat(inpH.value)) || roomConfig.height || 8;
+
+        const reader = new FileReader();
+        reader.readAsDataURL(fileInput.files[0]);
+        reader.onload = async () => {
+            const base64Image = reader.result;
+
+            try {
+                const response = await fetch('/api/analyze-layout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ imageBase64: base64Image, realWidth, realLength })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    if (statusText) statusText.innerText = "✅ Phân tích xong!";
+                    
+                    roomConfig = { length: realLength, width: realWidth, height: realHeight };
+                    buildStatic();
+                    if (typeof socket !== 'undefined') socket.emit('update_room_config', roomConfig);
+
+                    racksData = data.racks; 
+                    updateRacks(); 
+                    if (typeof socket !== 'undefined') socket.emit('set_racks', racksData);
+                } else {
+                    if (statusText) statusText.innerText = "❌ Lỗi AI: " + data.message;
+                }
+            } catch (err) {
+                if (statusText) statusText.innerText = "❌ Lỗi kết nối đến Backend.";
+                console.error(err);
+            }
+        };
+    });
+}
+
 // ================= SOCKET =================
 socket.on('room_config_update', (cfg) => {
     roomConfig = cfg;
-    $('inpL').value = cfg.length; $('inpW').value = cfg.width; $('inpH').value = cfg.height;
+    if ($('inpL')) $('inpL').value = cfg.length; 
+    if ($('inpW')) $('inpW').value = cfg.width; 
+    if ($('inpH')) $('inpH').value = cfg.height;
     buildStatic();
 });
 socket.on('racks_updated', (data) => { racksData = data; updateRacks(); });
@@ -352,9 +356,11 @@ document.querySelectorAll('.collapsible').forEach((c) => c.addEventListener('cli
     content.style.maxHeight = content.style.maxHeight === 'none' ? '0' : 'none';
 }));
 const panel = $('floating-panel'), header = document.querySelector('.panel-header');
-$('btn-settings').addEventListener('click', () => { panel.style.display = 'flex'; });
-$('btn-close-panel').addEventListener('click', () => { panel.style.display = 'none'; });
+if ($('btn-settings')) $('btn-settings').addEventListener('click', () => { if (panel) panel.style.display = 'flex'; });
+if ($('btn-close-panel')) $('btn-close-panel').addEventListener('click', () => { if (panel) panel.style.display = 'none'; });
 let dragging = false, sx, sy, ix, iy;
-header.addEventListener('mousedown', (e) => { if (e.target.tagName === 'BUTTON') return; dragging = true; sx = e.clientX; sy = e.clientY; ix = panel.offsetLeft; iy = panel.offsetTop; });
-document.addEventListener('mousemove', (e) => { if (dragging) { panel.style.left = ix + e.clientX - sx + 'px'; panel.style.top = iy + e.clientY - sy + 'px'; } });
-document.addEventListener('mouseup', () => { dragging = false; });
+if (header) {
+    header.addEventListener('mousedown', (e) => { if (e.target.tagName === 'BUTTON') return; dragging = true; sx = e.clientX; sy = e.clientY; ix = panel.offsetLeft; iy = panel.offsetTop; });
+    document.addEventListener('mousemove', (e) => { if (dragging && panel) { panel.style.left = ix + e.clientX - sx + 'px'; panel.style.top = iy + e.clientY - sy + 'px'; } });
+    document.addEventListener('mouseup', () => { dragging = false; });
+}
