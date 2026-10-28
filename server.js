@@ -78,7 +78,7 @@ app.post('/api/analyze-layout', async (req, res) => {
 
         // Cấu hình Model với Structured Output để ép khuôn JSON
         const model = genAI.getGenerativeModel({
-            model: "gemini-1.5-flash-latest",
+            model: "gemini-1.5-flash",
             systemInstruction: "Bạn là hệ thống thị giác máy tính cho mặt bằng kho 4-Way Shuttle. Hãy nhận diện các cụm kệ, xác định tâm theo tỷ lệ phần trăm (0.0 đến 1.0) tính từ góc trên-trái của bức ảnh, và đếm số cột/hàng. Chỉ trả về JSON.",
             generationConfig: {
                 responseMimeType: "application/json",
