@@ -258,12 +258,15 @@ document.getElementById('btnAiGenerate').addEventListener('click', async () => {
 
     statusText.innerText = "⏳ AI đang bóc tách tọa độ...";
 
+    // Lấy kích thước kho thực tế từ ô nhập liệu giao diện
+    const realLength = parseFloat($('inpL') ? $('inpL').value : roomConfig.length) || 55.9;
+    const realWidth = parseFloat($('inpW') ? $('inpW').value : roomConfig.width) || 20.4;
+    const realHeight = parseFloat($('inpH') ? $('inpH').value : roomConfig.height) || 8;
+
     const reader = new FileReader();
     reader.readAsDataURL(fileInput.files[0]);
     reader.onload = async () => {
         const base64Image = reader.result;
-        const realWidth = typeof roomConfig !== 'undefined' ? roomConfig.width : 20.4; 
-        const realLength = typeof roomConfig !== 'undefined' ? roomConfig.length : 55.9;
 
         try {
             const response = await fetch('/api/analyze-layout', {
@@ -275,12 +278,17 @@ document.getElementById('btnAiGenerate').addEventListener('click', async () => {
             const data = await response.json();
             
             if (data.success) {
-                statusText.innerText = "✅ Phân tích xong! Kéo thả để tinh chỉnh.";
+                statusText.innerText = "✅ Phân tích xong!";
+                
+                // Cập nhật cấu hình kho theo kích thước đang chọn
+                roomConfig = { length: realLength, width: realWidth, height: realHeight };
+                buildStatic(); // Vẽ lại sàn và tường kho chuẩn
+                socket.emit('update_room_config', roomConfig);
+
+                // Nạp dữ liệu kệ mới từ AI
                 racksData = data.racks; 
                 updateRacks(); 
-                if (typeof socket !== 'undefined') {
-                    socket.emit('set_racks', racksData);
-                }
+                socket.emit('set_racks', racksData);
             } else {
                 statusText.innerText = "❌ Lỗi AI: " + data.message;
             }
