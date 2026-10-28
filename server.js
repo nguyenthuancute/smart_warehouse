@@ -73,13 +73,11 @@ app.post('/api/analyze-layout', async (req, res) => {
             return res.status(500).json({ success: false, message: "Thiếu GEMINI_API_KEY trên server." });
         }
 
-        // Khởi tạo genAI an toàn bên trong API
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-        // Cấu hình Model với Structured Output để ép khuôn JSON
         const model = genAI.getGenerativeModel({
             model: "gemini-3.6-flash",
-            systemInstruction: "Bạn là hệ thống thị giác máy tính cho mặt bằng kho 4-Way Shuttle. Hãy nhận diện các cụm kệ, xác định tâm theo tỷ lệ phần trăm (0.0 đến 1.0) tính từ góc trên-trái của bức ảnh, và đếm số cột/hàng. Chỉ trả về JSON.",
+            systemInstruction: "Bạn là hệ thống thị giác máy tính cho mặt bằng kho 4-Way Shuttle. Hãy nhận diện các cụm kệ, xác định vị trí góc trên-trái của từng cụm kệ theo tỷ lệ phần trăm (x_percent từ 0.0 đến 1.0 theo chiều dài, z_percent từ 0.0 đến 1.0 theo chiều rộng), và đếm số cột (cols), số hàng (rows). Chỉ trả về JSON.",
             generationConfig: {
                 responseMimeType: "application/json",
                 responseSchema: {
@@ -104,7 +102,6 @@ app.post('/api/analyze-layout', async (req, res) => {
             }
         });
 
-        // Tách bỏ header của chuỗi Base64
         const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
 
         const result = await model.generateContent([
@@ -116,15 +113,18 @@ app.post('/api/analyze-layout', async (req, res) => {
 
         const aiData = JSON.parse(result.response.text());
 
-        // Chuyển đổi tỷ lệ phần trăm thành tọa độ gốc hệ Three.js
+        // Chuyển đổi tỷ lệ phần trăm thành tọa độ thực của kho (từ 0 đến realLength / realWidth)
         const finalRacks = aiData.racks.map((rack, index) => ({
             id: `rack_ai_${index + 1}`,
-            cols: rack.cols,
-            rows: rack.rows,
-            levels: 4, 
-            levelHeight: 1.5,
-            x: (rack.x_percent * realWidth) - (realWidth / 2),
-            z: (rack.z_percent * realLength) - (realLength / 2)
+            cols: rack.cols || 4,
+            rows: rack.rows || 10,
+            tiers: 4,               // Sửa chuẩn tên biến để hết lỗi NaN
+            tierH: 1.5,             // Sửa chuẩn chiều cao mỗi tầng
+            cellX: 1.22,
+            cellZ: 1.17,
+            pitchZ: 1.55,
+            x: Math.round((rack.x_percent * realLength) * 100) / 100,
+            z: Math.round((rack.z_percent * realWidth) * 100) / 100
         }));
 
         res.json({ success: true, racks: finalRacks });
