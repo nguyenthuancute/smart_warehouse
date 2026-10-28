@@ -143,14 +143,6 @@ function buildStatic() {
         staticGroup.add(e);
     });
 
-    layout.extras.forEach((e) => {
-        const m = mat(e.c, e.o ? { transparent: true, opacity: e.o } : {});
-        staticGroup.add(mesh(m, e.x + e.w / 2, e.h / 2, e.z + e.d / 2, e.w, e.h, e.d));
-    });
-    layout.forklifts.forEach((f) => staticGroup.add(forklift(f)));
-    scene.add(staticGroup);
-}
-
 // ================= DANH SÁCH KỆ (UI) =================
 function renderRackListUI() {
     const list = $('rack-list');
