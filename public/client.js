@@ -35,7 +35,9 @@ axisContainer.appendChild(axisRenderer.domElement);
 axisScene.add(new THREE.AxesHelper(1));
 
 // ================= DỮ LIỆU =================
-let layout = null;
+let layout = null;        // hình học đang hiển thị (floor, walls)
+let defaultLayout = null; // layout.json gốc, dùng cho nút "Nạp lại layout kho"
+let customLayout = false; // true khi đã dùng sàn/tường do AI tạo
 let roomConfig = { length: 55.9, width: 20.4, height: 8 };
 let racksData = [];
 let staticGroup = null;
@@ -106,6 +108,21 @@ function updateRacks() {
     rackGroup.clear();
     racksData.forEach((r) => rackGroup.add(createRack3D(r)));
     renderRackListUI();
+}
+
+// ================= CAMERA THEO KÍCH THƯỚC KHO =================
+function fitCamera() {
+    const { length: L, width: W } = roomConfig;
+    const d = Math.max(L, W);
+    controls.target.set(L / 2, 0, W / 2);
+    camera.position.set(L / 2 + d * 0.2, d * 0.6, W / 2 + d * 0.7);
+    grid.position.set(L / 2, -0.02, W / 2);
+    controls.update();
+}
+function syncRoomInputs() {
+    if ($('inpL')) $('inpL').value = roomConfig.length;
+    if ($('inpW')) $('inpW').value = roomConfig.width;
+    if ($('inpH')) $('inpH').value = roomConfig.height;
 }
 
 // ================= PHÒNG, TƯỜNG (ĐÃ XÓA XE NÂNG VÀ THÙNG HÀNG PHỤ) =================
@@ -239,10 +256,16 @@ if ($('btn-add-rack')) {
 }
 if ($('btn-load-layout')) {
     $('btn-load-layout').addEventListener('click', () => {
-        if (!layout) return;
-        racksData = JSON.parse(JSON.stringify(layout.racks));
+        if (!defaultLayout) return;
+        layout = defaultLayout;
+        customLayout = false;
+        roomConfig = { ...defaultLayout.room, height: roomConfig.height };
+        racksData = JSON.parse(JSON.stringify(defaultLayout.racks));
+        syncRoomInputs();
+        buildStatic();
         updateRacks();
-        socket.emit('set_racks', racksData);
+        fitCamera();
+        socket.emit('set_layout', { room: roomConfig, floor: defaultLayout.floor, walls: defaultLayout.walls, racks: racksData });
     });
 }
 
@@ -264,6 +287,9 @@ if (btnAi) {
         const realLength = (inpL && parseFloat(inpL.value)) || roomConfig.length || 55.9;
         const realWidth = (inpW && parseFloat(inpW.value)) || roomConfig.width || 20.4;
         const realHeight = (inpH && parseFloat(inpH.value)) || roomConfig.height || 8;
+        // Nếu người dùng nhập kích thước thật của bản vẽ thì dùng, để trống thì AI tự đọc từ bản vẽ
+        const userLength = parseFloat(($('aiLen') || {}).value) || 0;
+        const userWidth = parseFloat(($('aiWid') || {}).value) || 0;
 
         const reader = new FileReader();
         reader.readAsDataURL(fileInput.files[0]);
@@ -274,7 +300,7 @@ if (btnAi) {
                 const response = await fetch('/api/analyze-layout', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ imageBase64: base64Image, realWidth, realLength })
+                    body: JSON.stringify({ imageBase64: base64Image, realWidth, realLength, userLength, userWidth })
                 });
 
                 const data = await response.json();
@@ -282,13 +308,17 @@ if (btnAi) {
                 if (data.success) {
                     if (statusText) statusText.innerText = "✅ Phân tích xong!";
                     
-                    roomConfig = { length: realLength, width: realWidth, height: realHeight };
+                    // Áp dụng kích thước, sàn, tường và kệ theo bản vẽ
+                    roomConfig = { length: data.room.length, width: data.room.width, height: realHeight };
+                    layout = { ...(layout || {}), floor: data.floor, walls: data.walls };
+                    customLayout = true;
+                    racksData = data.racks;
+                    syncRoomInputs();
                     buildStatic();
-                    if (typeof socket !== 'undefined') socket.emit('update_room_config', roomConfig);
-
-                    racksData = data.racks; 
-                    updateRacks(); 
-                    if (typeof socket !== 'undefined') socket.emit('set_racks', racksData);
+                    updateRacks();
+                    fitCamera();
+                    socket.emit('set_layout', { room: roomConfig, floor: data.floor, walls: data.walls, racks: racksData });
+                    if (statusText) statusText.innerText = `✅ Xong: kho ${roomConfig.length}×${roomConfig.width} m, ${data.racks.length} cụm kệ, ${data.walls.length} đoạn tường`;
                 } else {
                     if (statusText) statusText.innerText = "❌ Lỗi AI: " + data.message;
                 }
@@ -309,8 +339,21 @@ socket.on('room_config_update', (cfg) => {
     buildStatic();
 });
 socket.on('racks_updated', (data) => { racksData = data; updateRacks(); });
+socket.on('layout_update', (d) => {
+    roomConfig = d.room;
+    layout = { ...(layout || {}), floor: d.floor, walls: d.walls };
+    customLayout = true;
+    racksData = d.racks;
+    syncRoomInputs();
+    buildStatic();
+    updateRacks();
+    fitCamera();
+});
 
-fetch('layout.json').then((r) => r.json()).then((l) => { layout = l; buildStatic(); });
+fetch('layout.json').then((r) => r.json()).then((l) => {
+    defaultLayout = l;
+    if (!customLayout) { layout = l; buildStatic(); }
+});
 
 // ================= CAMERA PHÍM W/A/S/D =================
 const keys = {};
