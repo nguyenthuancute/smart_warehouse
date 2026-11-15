@@ -53,6 +53,11 @@
                             <div class="upload-section" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ccc; margin-bottom: 15px;">
     <label style="font-weight: bold; margin-bottom: 5px; display: block;">Khởi tạo Kệ bằng AI (Bản vẽ 2D)</label>
     <input type="file" id="layoutUpload" accept="image/*" style="width: 100%; margin-bottom: 10px;" />
+    <label style="font-size:.8em;color:#555;display:block;margin-bottom:4px">Kích thước thật của bản vẽ (m) – Dài / Rộng (để trống: AI tự đọc từ bản vẽ):</label>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+        <input type="number" id="aiLen" placeholder="Dài (X)" min="5" step="0.1" style="width:50%" />
+        <input type="number" id="aiWid" placeholder="Rộng (Z)" min="5" step="0.1" style="width:50%" />
+    </div>
     <button id="btnAiGenerate" style="width: 100%; padding: 8px; background-color: #6366f1; color: white; border: none; border-radius: 4px; cursor: pointer;">
         Phân tích AI
     </button>
